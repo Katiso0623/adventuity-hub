@@ -252,8 +252,13 @@
       '<div class="grid cols-2">' + (next ? lessonCard(next, true) : '<div class="card"><span class="eyebrow">Next lesson</span><h3 style="margin-top:6px">No confirmed lesson yet</h3><p class="small muted" style="margin-top:4px">' + (pend.length ? pend.length + ' request' + (pend.length > 1 ? 's are' : ' is') + ' waiting for the tutor to accept.' : 'Request a one-on-one or a seat in a group class.') + '</p><div class="row" style="margin-top:10px"><button class="btn primary" data-go="tab" data-id="book">Book a lesson</button></div></div>') +
       (ADV.studyTodayCard ? ADV.studyTodayCard() : '') + '</div>' +
       (!state.approved ? '<div class="card"><div class="row">' + ICON.lock + '<div><b>Study notes open once the tutor approves your account</b><p class="small muted">This usually happens with your first confirmed lesson. You can already see every topic and how long it takes to study.</p></div></div></div>' : '') +
-      (ADV.pushCard ? ADV.pushCard('Get a notification on this device when the tutor confirms your lesson.') : '') + reviewCard() + '</div>';
+      (ADV.pushCard ? ADV.pushCard('Get a notification on this device when the tutor confirms your lesson.') : '') + reviewCard() + shareCard() + '</div>';
   };
+  function shareCard() {
+    const site = (CFG.siteUrl || (location.origin + location.pathname.replace(/portal\.html$/, '')));
+    const msg = 'I use Adventuity for Grade 12 Maths and Physical Sciences – online lessons, notes and exam questions with memos. Have a look: ' + site;
+    return '<div class="card row" style="justify-content:space-between"><div><b>Know someone writing matric?</b><p class="small muted">Send them the link – they can book their own lessons.</p></div><a class="btn" href="https://wa.me/?text=' + enc(msg) + '" target="_blank" rel="noopener">Share on WhatsApp</a></div>';
+  }
   function reviewCard() {
     const url = state.settings.site && state.settings.site.reviewUrl;
     if (!url || !/^https:\/\//.test(url) || !state.bookings.some((b) => b.status === 'completed')) return '';
