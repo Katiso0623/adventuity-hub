@@ -1107,7 +1107,7 @@ ${footer({ current: '404', abs: true })}
 /* ---------- sitemap / robots ---------- */
 const sitemap = () => `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${[['', '1.0'], ['maths.html', '0.9'], ['physical-sciences.html', '0.9'], [TT_FILE, '0.8'], ...ALL.map((t) => ['topics/' + t.id + '.html', '0.7']), [PORTAL, '0.5']].map(([p, pr]) => `  <url><loc>${BASE}${p}</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>${pr}</priority></url>`).join('\n')}
+${[['', '1.0'], ['maths.html', '0.9'], ['physical-sciences.html', '0.9'], [TT_FILE, '0.8'], ...ALL.map((t) => ['topics/' + t.id + '.html', '0.7'])].map(([p, pr]) => `  <url><loc>${BASE}${p}</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>${pr}</priority></url>`).join('\n')}
 </urlset>
 `;
 const robots = () => `User-agent: *
