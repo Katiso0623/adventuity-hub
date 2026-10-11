@@ -33,7 +33,8 @@ jobs:
           KEYFILE=$(ls site/*.txt | grep -E '/[0-9a-f]{32}\.txt$' | head -1)
           [ -z "$KEYFILE" ] && { echo "no IndexNow key"; exit 0; }
           KEY=$(basename "$KEYFILE" .txt)
-          BASE="https://katiso0623.github.io/adventuity-hub/"
+          BASE=$(grep -o '<loc>[^<]*</loc>' site/sitemap.xml | head -1 | sed 's/<[^>]*>//g')
+          HOST=$(echo "$BASE" | sed -E 's#https?://([^/]+)/.*#\1#')
           URLS=$(grep -o '<loc>[^<]*</loc>' site/sitemap.xml | sed 's/<[^>]*>//g' | jq -R . | jq -s -c .)
-          BODY=$(jq -n -c --arg key "$KEY" --arg loc "${BASE}${KEY}.txt" --argjson urls "$URLS" '{host:"katiso0623.github.io", key:$key, keyLocation:$loc, urlList:$urls}')
+          BODY=$(jq -n -c --arg key "$KEY" --arg host "$HOST" --arg loc "${BASE}${KEY}.txt" --argjson urls "$URLS" '{host:$host, key:$key, keyLocation:$loc, urlList:$urls}')
           curl -sS -o /dev/null -w "IndexNow response: %{http_code}\n" -X POST "https://api.indexnow.org/indexnow" -H "Content-Type: application/json; charset=utf-8" -d "$BODY"

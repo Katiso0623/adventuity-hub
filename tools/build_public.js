@@ -17,7 +17,8 @@ const argVal = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] :
 const OUT = path.resolve(argVal('--out') || path.join(ROOT, 'public'));
 const SKIP_OG = args.includes('--no-og');
 
-const BASE = 'https://katiso0623.github.io/adventuity-hub/';
+// the site address comes from cfg.json (siteUrl) so moving to an own domain is a one-line change
+const BASE = (() => { try { const u = JSON.parse(fs.readFileSync(path.join(ROOT, 'cfg.json'), 'utf8')).siteUrl; if (u) return u.replace(/\/?$/, '/'); } catch (e) { /* default */ } return 'https://katiso0623.github.io/adventuity-hub/'; })();
 const TODAY = '2026-10-11';
 const BRAND = 'Adventuity';
 const LEGAL = 'Adventuity (Pty) Ltd';

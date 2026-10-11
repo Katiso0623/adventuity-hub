@@ -61,7 +61,7 @@ for f in ['sbmini.js', 'steps.js', 'figlib.js', 'portal_core.js', 'portal_msgs.j
     shutil.copy(os.path.join(D, f), os.path.join(OUT, 'assets', f))
 wr('assets/mj-config.js', 'window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],displayMath:[["\\\\[","\\\\]"]]},svg:{fontCache:"global"},options:{enableMenu:false},startup:{typeset:false,ready:function(){MathJax.startup.defaultReady();MathJax.startup.promise.then(function(){if(window.__onMathJaxReady)window.__onMathJaxReady();});}}};\n')
 wr('assets/boot.js', 'window.ADV.boot();\n')
-site_url = backend.get('site_url') or 'https://katiso0623.github.io/adventuity-hub/'
+site_url = cfg.get('siteUrl') or backend.get('site_url') or 'https://katiso0623.github.io/adventuity-hub/'
 config = {'supabaseUrl': backend.get('supabaseUrl', ''), 'supabaseKey': backend.get('supabaseKey', ''), 'vapidPublic': backend['vapid_public'], 'contentVersion': content_version, 'siteUrl': site_url, 'exams': cfg['exams']}
 wr('config.js', '/* Public settings for the Adventuity portal (no secrets here: the anon key is public by design; row-level security protects the data). */\nwindow.ADV_CONFIG = ' + json.dumps(config, indent=1, ensure_ascii=False) + ';\n')
 
