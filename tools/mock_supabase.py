@@ -142,6 +142,7 @@ class H(SimpleHTTPRequestHandler):
         if path == '/auth/v1/logout': return self.reply(204)
         return self.reply(404, {'message': 'no'})
     def fn(self, name):
+        if name == 'tutor-apply': return self.tutor_apply()
         b = json.loads(self.body() or b'{}'); uid = self.uid()
         with LOCK: LOG.append({'fn': name, 'body': b, 'uid': uid})
         if name == 'signup':
@@ -158,6 +159,32 @@ class H(SimpleHTTPRequestHandler):
             if b.get('action') == 'delete': run('delete from auth.users where id = %s' % lit(b['user_id']), 'service')
             return self.reply(200, {'ok': True})
         return self.reply(404, {'error': 'no function'})
+    def tutor_apply(self):
+        from email.parser import BytesParser
+        from email.policy import default as pol
+        ctype = self.headers.get('Content-Type', ''); raw = self.body()
+        if 'multipart/form-data' not in ctype: return self.reply(400, {'error': 'Use the form on the website to apply.'})
+        msg = BytesParser(policy=pol).parsebytes(b'Content-Type: ' + ctype.encode() + b'\r\nMIME-Version: 1.0\r\n\r\n' + raw)
+        f, lists, cv = {}, {'subjects': [], 'grades': []}, None
+        for part in msg.iter_parts():
+            n = part.get_param('name', header='content-disposition'); fn = part.get_filename(); data = part.get_payload(decode=True) or b''
+            if fn is not None: cv = (fn, part.get_content_type(), data)
+            elif n in lists: lists[n].append(data.decode())
+            else: f[n] = data.decode()
+        with LOCK: LOG.append({'fn': 'tutor-apply', 'fields': f, 'lists': lists, 'cv': cv and (cv[0], len(cv[2]))})
+        if f.get('website'): return self.reply(200, {'ok': True, 'ref': 'T-BOT000'})
+        for k, m in (('full_name', 'Please enter your name and surname.'), ('email', 'Please enter a valid e-mail address.'), ('phone', 'Please enter a phone number.'), ('qualification', 'Please tell us your qualification.')):
+            if len(f.get(k, '').strip()) < 2: return self.reply(400, {'error': m})
+        if not lists['subjects']: return self.reply(400, {'error': 'Please tick at least one subject you can teach.'})
+        if f.get('consent') != 'yes': return self.reply(400, {'error': 'Please tick the consent box.'})
+        if not cv or not cv[2] or cv[0].rsplit('.', 1)[-1].lower() not in ('pdf', 'doc', 'docx'): return self.reply(400, {'error': 'Please attach your CV (PDF or Word).'})
+        path = '2026-10/' + rnd.token_hex(8) + '.' + cv[0].rsplit('.', 1)[-1].lower()
+        run('insert into storage.objects (bucket_id, name) values (%s, %s)' % (lit('cvs'), lit(path)), 'service')
+        arr = lambda xs: 'array[%s]::text[]' % ','.join(lit(x) for x in xs) if xs else "'{}'::text[]"
+        out = run('insert into public.tutor_applications (full_name, email, phone, province, town, subjects, grades, qualification, institution, experience_years, mode, availability, about, referral, cv_path, cv_name, cv_size) values (%s) returning ref' % ', '.join([
+            lit(f['full_name']), lit(f['email']), lit(f['phone']), lit(f.get('province', '')), lit(f.get('town', '')), arr(lists['subjects']), arr(lists['grades']), lit(f['qualification']), lit(f.get('institution', '')),
+            str(int(f.get('experience_years') or 0)), lit(f.get('mode') or 'online'), lit(f.get('availability', '')), lit(f.get('about', '')), lit(f.get('referral', '')), lit(path), lit(cv[0]), str(len(cv[2]))]), 'service')
+        return self.reply(200, {'ok': True, 'ref': out.strip()})
     def storage(self, method, path):
         uid = self.uid()
         m = re.match(r'^/storage/v1/object/sign/([a-z]+)/(.+)$', path)
@@ -166,6 +193,8 @@ class H(SimpleHTTPRequestHandler):
             if ok != '1': return self.reply(400, {'message': 'Object not found'})
             return self.reply(200, {'signedURL': '/object/sign/%s/%s?token=test' % (m.group(1), m.group(2))})
         m = re.match(r'^/storage/v1/object/([a-z]+)/(.+)$', path)
+        if m and method == 'DELETE':
+            run('delete from storage.objects where bucket_id = %s and name = %s' % (lit(m.group(1)), lit(unquote(m.group(2)))), uid); return self.reply(200, {'message': 'deleted'})
         if m and method == 'POST':
             self.body(); run('insert into storage.objects (bucket_id, name) values (%s, %s)' % (lit(m.group(1)), lit(unquote(m.group(2)))), uid); return self.reply(200, {'Key': m.group(1) + '/' + m.group(2)})
         return self.reply(404, {'message': 'no'})

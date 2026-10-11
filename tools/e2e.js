@@ -22,6 +22,7 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
     page.on('dialog', (d) => d.accept(d.type() === 'prompt' ? (d.defaultValue() || '') : undefined));
     return { ctx, page };
   }
+  const L2Check = async () => { const r = await L.page.evaluate(async () => { try { return (await ADV.sb.select('tutor_applications', {})).length; } catch (e) { return -1; } }); return r; };
   const shot = async (page, n, full) => { await page.waitForTimeout(400); await page.screenshot({ path: path.join(OUT, n + '.png'), fullPage: !!full }); };
   const mjDone = (page) => page.waitForFunction(() => window.MathJax && MathJax.startup && MathJax.startup.promise).then(() => page.evaluate(() => MathJax.startup.promise)).then(() => page.waitForTimeout(600));
 
@@ -129,6 +130,34 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   ok(true, 'group class created');
   await A.page.goto(BASE + '#money'); await A.page.fill('#fee-maths', '300'); await A.page.click('#f-fees button[type=submit]'); await A.page.waitForSelector('text=Saved');
   ok(true, 'fees saved');
+
+  /* 7b. a tutor applies with a CV; the tutor reviews it */
+  step = 'tutor-apply';
+  const T = await mk('applicant', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await T.page.goto('http://127.0.0.1:54321/tutor-apply.html');
+  await T.page.fill('#in-full_name', 'Naledi Khumalo'); await T.page.fill('#in-email', 'naledi@example.com'); await T.page.fill('#in-phone', '072 555 0101');
+  await T.page.selectOption('#in-province', 'Free State'); await T.page.fill('#in-town', 'Bloemfontein');
+  await T.page.check('input[name=subjects][value=maths]'); await T.page.check('input[name=subjects][value=phys]'); await T.page.check('input[name=grades][value="12"]');
+  await T.page.fill('#in-qualification', 'BSc Mathematics and Physics (2024)'); await T.page.fill('#in-institution', 'University of the Free State'); await T.page.fill('#in-experience_years', '3');
+  await T.page.fill('#in-availability', 'Mon–Thu 16:00–20:00, Sat mornings'); await T.page.check('input[name=mode][value=both]');
+  await T.page.fill('#in-about', 'I tutor because I enjoy seeing a learner finally get it. For optimisation I start with a sketch and a table of values before any calculus.');
+  await T.page.setInputFiles('#in-cv', { name: 'Naledi-Khumalo-CV.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n') });
+  await T.page.check('#in-consent');
+  await T.page.click('form button[type=submit]');
+  await T.page.waitForSelector('text=/T-[0-9A-F]{6}/');
+  ok(true, 'tutor application sent with CV');
+  await shot(T.page, '19-tutor-applied', true);
+  await A.page.goto(BASE + '#tutors'); await A.page.reload(); await A.page.waitForSelector('text=Naledi Khumalo');
+  await shot(A.page, '20-admin-tutors', true);
+  const [pop] = await Promise.all([A.page.waitForEvent('popup'), A.page.click('[data-action="a-cv"]')]);
+  await pop.waitForURL(/storage\/v1\/object\/sign\/cvs\//, { timeout: 10000 }).catch(() => { });
+  ok(/\/storage\/v1\/object\/sign\/cvs\//.test(pop.url()), 'CV opens through a short-lived signed link'); await pop.close();
+  await A.page.waitForSelector('text=Shortlisted');
+  await A.page.selectOption('select[data-action="a-status"]', 'interview'); await A.page.waitForSelector('text=Saved');
+  ok(true, 'application status changed');
+  const leak = await L2Check(); ok(leak === 0, 'learners cannot read tutor applications');
+  await A.page.click('[data-action="a-del"]'); await A.page.waitForSelector('text=Application and CV deleted');
+  ok(true, 'application and CV deleted on request');
 
   /* 8. a second learner who is not approved: outline only, no key */
   step = 'learner-b';

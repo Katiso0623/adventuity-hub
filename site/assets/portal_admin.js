@@ -10,7 +10,7 @@
 
   /* ---------------------------------------------------------------- data */
   ADV.adminInit = async function () {
-    await Promise.all([loadLearners(), loadClassRooms()]);
+    await Promise.all([loadLearners(), loadClassRooms(), loadApps()]);
     if (ADV.startPolling) ADV.startPolling();
   };
   async function loadLearners() { try { state.learners = await sb.select('profiles', { order: 'created_at.desc' }); } catch (e) { state.learners = state.learners || []; } }
@@ -219,6 +219,66 @@
       (billable.length ? billable.map((b) => '<tr><td class="mono">' + esc(fmt.key(b.starts_at)) + '</td><td>' + esc(learnerOf(b).full_name || '') + '</td><td>' + esc(SUBJ[b.subject].short) + (b.class_id ? ' (class)' : '') + ' <span class="mono small muted">' + esc(b.ref) + '</span></td><td class="mono" style="text-align:right">' + fmt.rand(b.fee) + '</td><td>' + (b.paid ? pill('good', 'Paid' + (b.paid_at ? ' ' + fmt.date(b.paid_at) : '')) : b.pop_path ? pill('accent', 'Proof sent') : pill('warn', 'Unpaid')) + '</td><td><div class="row" style="gap:4px;flex-wrap:nowrap">' + (b.pop_path ? '<button class="chipbtn" data-action="pop-view" data-id="' + b.id + '">Proof</button>' : '') + '<button class="chipbtn" data-action="b-paid" data-id="' + b.id + '">' + (b.paid ? 'Mark unpaid' : 'Mark paid') + '</button></div></td></tr>').join('') : '<tr><td colspan="6" class="muted">No accepted lessons yet.</td></tr>') + '</tbody></table></div></div></div>';
   };
   ADV.actions['csv-pay'] = () => download('adventuity-payments-' + fmt.key(now()) + '.csv', csv([['Date', 'Reference', 'Learner', 'Subject', 'Fee (R)', 'Paid', 'Paid on']].concat(state.bookings.filter((b) => ['accepted', 'completed'].includes(b.status)).map((b) => [fmt.key(b.starts_at), b.ref, learnerOf(b).full_name, SUBJ[b.subject].short, Number(b.fee).toFixed(2), b.paid ? 'yes' : 'no', b.paid_at ? fmt.key(b.paid_at) : '']))));
+
+
+  /* ---------------------------------------------------------------- tutor applications */
+  const APP_STATUS = { new: ['warn', 'New'], shortlisted: ['accent', 'Shortlisted'], interview: ['accent', 'Interview'], accepted: ['good', 'Accepted'], declined: ['', 'Declined'] };
+  const SUBJ_NAMES = { maths: 'Mathematics', phys: 'Physics', chem: 'Chemistry', lifesci: 'Life Sciences', other: 'Other' };
+  async function loadApps() {
+    try { state.apps = await sb.select('tutor_applications', { order: 'created_at.desc', limit: 500 }); } catch (e) { state.apps = state.apps || []; }
+    state.badges.tutors = (state.apps || []).filter((a) => a.status === 'new').length;
+  }
+  ADV.adminTick = async function (announce) {
+    const before = new Set((state.apps || []).map((a) => a.id)); await loadApps();
+    const fresh = (state.apps || []).filter((a) => !before.has(a.id));
+    if (announce && fresh.length) ADV.alert(fresh.length === 1 ? 'New tutor application' : fresh.length + ' new tutor applications', fresh.map((a) => a.full_name).join(', '));
+  };
+  ADV.views.tutors = function () {
+    const f = state.aFilter || 'open'; const all = state.apps || [];
+    const sets = { open: all.filter((a) => ['new', 'shortlisted', 'interview'].includes(a.status)), new: all.filter((a) => a.status === 'new'), accepted: all.filter((a) => a.status === 'accepted'), declined: all.filter((a) => a.status === 'declined'), all };
+    const seg = (k, l) => '<button class="' + (f === k ? 'on' : '') + '" data-action="a-filter" data-id="' + k + '">' + l + ' (' + sets[k].length + ')</button>';
+    const site = (CFG.siteUrl || '').replace(/\/?$/, '/');
+    const card = (a) => {
+      const st = APP_STATUS[a.status] || ['', a.status]; const open = state.appOpen === a.id;
+      const first = (a.full_name || '').split(' ')[0];
+      const mail = 'mailto:' + encodeURIComponent(a.email) + '?subject=' + encodeURIComponent('Your Adventuity tutor application ' + a.ref) + '&body=' + encodeURIComponent('Hi ' + first + ',\n\nThank you for applying to tutor with Adventuity.\n\n');
+      return '<div class="card" id="app-' + a.id + '"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="min-width:0"><div class="row" style="gap:6px">' + pill(st[0], st[1]) + '<span class="mono small muted">' + esc(a.ref) + '</span><span class="small muted">' + esc(fmt.date(a.created_at)) + '</span></div>' +
+        '<h3 style="margin-top:6px">' + esc(a.full_name) + '</h3><p class="small muted">' + [a.qualification, a.institution].filter(Boolean).map(esc).join(' · ') + '</p>' +
+        '<div class="row" style="gap:6px;margin-top:6px">' + (a.subjects || []).map((x) => pill(x === 'chem' ? 'chem' : x === 'phys' ? 'phys' : x === 'maths' ? 'maths' : '', SUBJ_NAMES[x] || x)).join('') + (a.grades && a.grades.length ? pill('', 'Gr ' + a.grades.join(', ')) : '') + pill('', (a.experience_years || 0) + ' yrs experience') + pill('', { online: 'Online', in_person: 'In person', both: 'Online and in person' }[a.mode] || a.mode) + (a.province ? pill('', a.province + (a.town ? ' · ' + a.town : '')) : '') + '</div></div>' +
+        '<div class="row">' + (a.cv_path ? '<button class="btn sm primary" data-action="a-cv" data-id="' + a.id + '">' + ICON.ext + 'Open CV</button>' : '') + '</div></div>' +
+        (a.availability ? '<p class="small" style="margin-top:8px"><b>Available:</b> ' + esc(a.availability) + '</p>' : '') +
+        (a.about ? '<p class="tutor-msg" style="white-space:pre-line">' + esc(open || a.about.length < 280 ? a.about : a.about.slice(0, 260) + '…') + (a.about.length >= 280 ? ' <button class="chipbtn" data-action="a-more" data-id="' + a.id + '">' + (open ? 'Less' : 'Read all') + '</button>' : '') + '</p>' : '') +
+        (a.referral ? '<p class="small muted" style="margin-top:6px">Heard about us: ' + esc(a.referral) + '</p>' : '') +
+        '<div class="grid cols-2" style="margin-top:12px"><div class="field"><label for="as-' + a.id + '">Status</label><select id="as-' + a.id + '" data-action="a-status" data-id="' + a.id + '">' + Object.keys(APP_STATUS).map((k) => '<option value="' + k + '"' + (a.status === k ? ' selected' : '') + '>' + APP_STATUS[k][1] + '</option>').join('') + '</select></div>' +
+        '<div class="field"><label for="an-' + a.id + '">Your notes (only you see these)</label><div class="row" style="flex-wrap:nowrap"><input id="an-' + a.id + '" value="' + esc(a.admin_notes || '') + '" placeholder="e.g. Strong on calculus – interview Thu 17:00"><button class="btn sm" data-action="a-note" data-id="' + a.id + '">Save</button></div></div></div>' +
+        '<div class="row" style="margin-top:10px"><a class="btn sm" href="' + esc(mail) + '">E-mail ' + esc(first) + '</a>' + (a.phone ? '<a class="btn sm" href="' + esc(ADV.wa(a.phone, 'Hi ' + first + ', thank you for applying to tutor with Adventuity (' + a.ref + ').')) + '" target="_blank" rel="noopener">WhatsApp ' + esc(a.phone) + '</a>' : '') + '<button class="btn sm ghost" data-action="a-del" data-id="' + a.id + '">Delete application and CV</button></div></div>';
+    };
+    return '<div class="stack"><div><span class="eyebrow">Tutors</span><h1>Tutor applications</h1><p class="small muted">Tutors apply on your public page <a href="' + esc(site + 'tutor-apply.html') + '" target="_blank" rel="noopener">tutor-apply.html</a> and upload a CV. Only you can see applications and CVs. You get a notification and an e-mail for each one; applicants get a confirmation e-mail.</p></div>' +
+      '<div class="row"><button class="btn sm" data-action="copy" data-v="' + esc(site + 'tutor-apply.html') + '">Copy the application link</button><a class="btn sm" href="https://wa.me/?text=' + encodeURIComponent('We are looking for Grade 12 Maths and Physical Sciences tutors (online). Apply with your CV here: ' + site + 'tutor-apply.html') + '" target="_blank" rel="noopener">Share on WhatsApp</a><button class="btn sm ghost" data-action="csv-apps">Download CSV</button></div>' +
+      '<div class="seg">' + seg('open', 'To review') + seg('new', 'New') + seg('accepted', 'Accepted') + seg('declined', 'Declined') + seg('all', 'All') + '</div>' +
+      ((sets[f] || []).length ? sets[f].map(card).join('') : '<div class="card"><p class="muted">No applications here yet.</p></div>') + '</div>';
+  };
+  ADV.actions['a-filter'] = (a) => { state.aFilter = a.dataset.id; ADV.render(); };
+  ADV.actions['a-more'] = (a) => { state.appOpen = state.appOpen === a.dataset.id ? null : a.dataset.id; ADV.render(); };
+  ADV.actions['a-cv'] = async (a) => {
+    const ap = state.apps.find((x) => x.id === a.dataset.id); const w = window.open('', '_blank');
+    try { const u = await sb.signedUrl('cvs', ap.cv_path, 600); if (w) w.location = u; else location.href = u; if (ap.status === 'new') await setApp(ap.id, { status: 'shortlisted' }, true); }
+    catch (e) { if (w) w.close(); toast(ADV.errMsg(e)); }
+  };
+  async function setApp(id, patch, quiet) {
+    try { const r = await sb.update('tutor_applications', { id: 'eq.' + id }, patch); const i = state.apps.findIndex((x) => x.id === id); if (i >= 0 && r[0]) state.apps[i] = r[0]; state.badges.tutors = state.apps.filter((x) => x.status === 'new').length; if (!quiet) toast('Saved'); ADV.render(); }
+    catch (e) { toast(ADV.errMsg(e)); }
+  }
+  ADV.actions['a-note'] = (a) => setApp(a.dataset.id, { admin_notes: ($('#an-' + a.dataset.id) || {}).value || '' });
+  ADV.actions['a-del'] = async (a) => {
+    const ap = state.apps.find((x) => x.id === a.dataset.id);
+    if (!confirm('Delete ' + ap.full_name + '\'s application and CV permanently? Do this when they ask, or when you no longer need it.')) return;
+    try { if (ap.cv_path) await sb.removeObject('cvs', ap.cv_path); await sb.remove('tutor_applications', { id: 'eq.' + ap.id }); state.apps = state.apps.filter((x) => x.id !== ap.id); state.badges.tutors = state.apps.filter((x) => x.status === 'new').length; toast('Application and CV deleted'); ADV.render(); }
+    catch (e) { toast(ADV.errMsg(e)); }
+  };
+  ADV.actions['csv-apps'] = () => download('adventuity-tutor-applications-' + fmt.key(now()) + '.csv', csv([['Reference', 'Date', 'Name', 'E-mail', 'Phone', 'Province', 'Town', 'Subjects', 'Grades', 'Qualification', 'Institution', 'Experience (years)', 'Mode', 'Availability', 'Status', 'Notes']].concat((state.apps || []).map((x) => [x.ref, fmt.key(x.created_at), x.full_name, x.email, x.phone, x.province, x.town, (x.subjects || []).map((k) => SUBJ_NAMES[k] || k).join('; '), (x.grades || []).join('; '), x.qualification, x.institution, x.experience_years, x.mode, x.availability, x.status, x.admin_notes]))));
+  const prevChange = ADV.onChange;
+  ADV.onChange = function (e) { if (prevChange) prevChange(e); const t = e.target; if (t.dataset && t.dataset.action === 'a-status') setApp(t.dataset.id, { status: t.value }); };
 
   /* ---------------------------------------------------------------- settings */
   async function savePublic(key, value) { await sb.upsert('public_settings', [{ key, value, updated_at: new Date().toISOString() }], 'key'); state.settings[key] = value; }
