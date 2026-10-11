@@ -252,8 +252,13 @@
       '<div class="grid cols-2">' + (next ? lessonCard(next, true) : '<div class="card"><span class="eyebrow">Next lesson</span><h3 style="margin-top:6px">No confirmed lesson yet</h3><p class="small muted" style="margin-top:4px">' + (pend.length ? pend.length + ' request' + (pend.length > 1 ? 's are' : ' is') + ' waiting for the tutor to accept.' : 'Request a one-on-one or a seat in a group class.') + '</p><div class="row" style="margin-top:10px"><button class="btn primary" data-go="tab" data-id="book">Book a lesson</button></div></div>') +
       (ADV.studyTodayCard ? ADV.studyTodayCard() : '') + '</div>' +
       (!state.approved ? '<div class="card"><div class="row">' + ICON.lock + '<div><b>Study notes open once the tutor approves your account</b><p class="small muted">This usually happens with your first confirmed lesson. You can already see every topic and how long it takes to study.</p></div></div></div>' : '') +
-      (ADV.pushCard ? ADV.pushCard('Get a notification on this device when the tutor confirms your lesson.') : '') + '</div>';
+      (ADV.pushCard ? ADV.pushCard('Get a notification on this device when the tutor confirms your lesson.') : '') + reviewCard() + '</div>';
   };
+  function reviewCard() {
+    const url = state.settings.site && state.settings.site.reviewUrl;
+    if (!url || !/^https:\/\//.test(url) || !state.bookings.some((b) => b.status === 'completed')) return '';
+    return '<div class="card row" style="justify-content:space-between"><div><b>Enjoying your lessons?</b><p class="small muted">A short Google review helps other matric learners find the tutor.</p></div><a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">★ Leave a review</a></div>';
+  }
 
   /* ---------------------------------------------------------------- LEARNER: book */
   ADV.views.book = function () {
@@ -302,6 +307,8 @@
     }
     if (b.status === 'pending' && new Date(b.starts_at) > now()) actions += '<button class="btn sm" data-action="b-cancel" data-id="' + b.id + '">Cancel request</button>';
     if (b.status === 'accepted' && new Date(b.starts_at) - now() > 24 * 36e5) actions += '<button class="btn sm ghost" data-action="b-cancel" data-id="' + b.id + '" data-confirm="1">Cancel lesson</button>';
+    const review = state.settings.site && state.settings.site.reviewUrl;
+    if (b.status === 'completed' && review && /^https:\/\//.test(review)) actions += '<a class="btn sm" href="' + esc(review) + '" target="_blank" rel="noopener">★ Leave a Google review</a>';
     if ((b.status === 'accepted' || b.status === 'completed') && !b.paid) actions += '<button class="btn sm" data-action="b-pay" data-id="' + b.id + '">How to pay</button>' + '<label class="btn sm file-btn">' + (b.pop_path ? 'Replace proof of payment' : 'Upload proof of payment') + '<input type="file" accept="image/*,application/pdf" data-action="b-pop" data-id="' + b.id + '" hidden></label>';
     return '<div class="card lesson' + (['declined', 'cancelled', 'completed'].includes(b.status) || jw.over ? ' past' : '') + '"><div class="date"><span>' + esc(fmt.wd(s)) + '</span><b>' + esc(fmt.day(s)) + '</b><span>' + esc(fmt.mon(s)) + '</span></div><div style="min-width:0">' +
       '<div class="row" style="gap:6px">' + ADV.statusPill(b) + pill(b.subject, SUBJ[b.subject].short) + pay + (b.pop_path && !b.paid ? pill('', 'Proof sent') : '') + '<span class="mono small muted">Ref ' + esc(b.ref) + '</span></div>' +

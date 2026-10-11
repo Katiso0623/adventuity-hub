@@ -158,6 +158,14 @@ open(os.path.join(OUT, '.nojekyll'), 'w').write('')
 subprocess.run(['node', os.path.join(D, 'tools', 'build_public.js'), '--no-og', '--bundle', bundle_path, '--out', os.path.join(OUT)], check=True)
 idx = open(os.path.join(OUT, 'index.html'), encoding='utf-8').read()
 if 'source=pwa' not in idx: open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8').write(idx.replace('</head>', '<script>if(/[?&]source=pwa/.test(location.search))location.replace("portal.html");</script>\n</head>', 1))
+# ---- search engines: IndexNow key file (Bing, Yandex, Seznam…) + optional Search Console / Bing verification tags
+seo = cfg.get('seo', {})
+if seo.get('indexNowKey'):
+    wr(seo['indexNowKey'] + '.txt', seo['indexNowKey'])
+tags = ''.join('<meta name="%s" content="%s">' % (n, seo[k]) for n, k in (('google-site-verification', 'googleSiteVerification'), ('msvalidate.01', 'bingSiteVerification')) if seo.get(k))
+if tags:
+    idx = open(os.path.join(OUT, 'index.html'), encoding='utf-8').read()
+    open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8').write(idx.replace('</head>', tags + '\n</head>', 1))
 og = os.path.join(D, 'brand', 'og.png')
 if os.path.exists(og): shutil.copy(og, os.path.join(OUT, 'og.png'))
 

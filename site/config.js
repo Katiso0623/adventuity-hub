@@ -3,7 +3,7 @@ window.ADV_CONFIG = {
  "supabaseUrl": "https://sxbpjowkcpysoxurfqzo.supabase.co",
  "supabaseKey": "sb_publishable_K6kU-7Ghj5kPH-6cKP3BJg_8Htk1mmp",
  "vapidPublic": "BK4rXaBf6DARfH3mbz06jPgyhOwgLveC_bYUAH6LjYMxme8Q5EK1dUFxUjokjtsOw2VZH8Ye5s0FCaqrscoqAZc",
- "contentVersion": "20261011224148",
+ "contentVersion": "20261011234654",
  "siteUrl": "https://katiso0623.github.io/adventuity-hub/",
  "exams": [
   {
