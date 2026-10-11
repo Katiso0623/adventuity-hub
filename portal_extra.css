@@ -127,3 +127,4 @@ body.learner .protect input,body.learner .protect textarea{-webkit-user-select:t
 .btn{min-height:40px}
 .btn.sm{min-height:34px}
 @media (max-width:760px){.btn{min-height:44px}.btn.sm{min-height:38px}}
+body:not(.learner) .nav button{padding:8px 8px;font-size:.86rem}

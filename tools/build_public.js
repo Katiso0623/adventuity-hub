@@ -19,7 +19,7 @@ const SKIP_OG = args.includes('--no-og');
 
 // the site address comes from cfg.json (siteUrl) so moving to an own domain is a one-line change
 const BASE = (() => { try { const u = JSON.parse(fs.readFileSync(path.join(ROOT, 'cfg.json'), 'utf8')).siteUrl; if (u) return u.replace(/\/?$/, '/'); } catch (e) { /* default */ } return 'https://katiso0623.github.io/adventuity-hub/'; })();
-const TODAY = '2026-10-11';
+const TODAY = '2026-10-12'; // sitemap lastmod / dateModified
 const BRAND = 'Adventuity';
 const LEGAL = 'Adventuity (Pty) Ltd';
 const SLOGAN = 'Transforming ideas into reality.';
@@ -182,7 +182,7 @@ ${maskCss('.brand .mark', '--mark-img')}
 .nav a:hover{color:var(--ink);background:var(--surface-2)}
 .nav a[aria-current="page"]{color:var(--ink);background:var(--surface-2);font-weight:600}
 .top-cta{display:flex;gap:8px;flex:none}
-@media (max-width:1023px){.nav{display:none}.top-cta{margin-left:auto}}
+@media (max-width:1119px){.nav{display:none}.top-cta{margin-left:auto}}
 @media (max-width:400px){.top-cta .signin{display:none}}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:10px 18px;font-weight:600;font-size:.95rem;font-family:var(--body);text-decoration:none;line-height:1.2;white-space:nowrap;cursor:pointer}
 .btn:hover{border-color:var(--ink-2)}
@@ -403,7 +403,7 @@ function topbar(o) {
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="topbar"><div class="wrap">
 <a class="brand" href="${home}"${o.current === 'index' ? ' aria-current="page"' : ''}><span class="mark" aria-hidden="true"></span><span><b>${BRAND}</b><small>Grade 12 tutoring online</small></span></a>
-<nav class="nav" aria-label="Main"><a href="${pre}maths.html"${cur('maths')}>Mathematics</a><a href="${pre}physical-sciences.html"${cur('sci')}>Physical Sciences</a><a href="${pre}${TT_FILE}"${cur('timetable')}>Exam dates</a><a href="${anchor('#fees')}">Fees</a><a href="${anchor('#faq')}">FAQ</a></nav>
+<nav class="nav" aria-label="Main"><a href="${pre}maths.html"${cur('maths')}>Mathematics</a><a href="${pre}physical-sciences.html"${cur('sci')}>Physical Sciences</a><a href="${pre}${TT_FILE}"${cur('timetable')}>Exam dates</a><a href="${pre}tutor-apply.html"${cur('tutor')}>Teach with us</a><a href="${anchor('#fees')}">Fees</a><a href="${anchor('#faq')}">FAQ</a></nav>
 <div class="top-cta"><a class="btn ghost signin" href="${pre}${PORTAL}">Sign in</a><a class="btn primary" href="${pre}${SIGNUP}">Book a lesson</a></div>
 </div></header>`;
 }
@@ -428,6 +428,9 @@ ${o.live ? '<li><a href="#" data-wa hidden target="_blank" rel="noopener">WhatsA
 <li><a href="${pre}${TT_FILE}">Matric exam timetable 2026</a></li>
 <li><a href="${anchor('#fees')}">Lesson fees</a></li>
 <li><a href="${anchor('#faq')}">Questions and answers</a></li>
+</ul></nav>
+<nav aria-label="Tutor links"><p class="eyebrow">Tutors</p><ul>
+<li><a href="${pre}tutor-apply.html">Teach with us – tutor jobs</a></li>
 </ul></nav>
 </div>
 <p class="foot-base small muted">© 2026 ${LEGAL} · ${SLOGAN}</p>
@@ -1021,7 +1024,7 @@ function buildTimetable() {
   ];
   const article = {
     '@context': 'https://schema.org', '@type': 'Article', '@id': url + '#article', headline: h1, description: desc, url, mainEntityOfPage: url,
-    image: BASE + 'og.png', inLanguage: 'en-ZA', datePublished: TODAY, dateModified: TODAY,
+    image: BASE + 'og.png', inLanguage: 'en-ZA', datePublished: '2026-10-11', dateModified: TODAY,
     author: { '@type': 'Organization', name: BRAND, url: BASE },
     publisher: { '@type': 'Organization', name: BRAND, legalName: LEGAL, url: BASE, logo: { '@type': 'ImageObject', url: BASE + 'icons/icon-512.png' } },
     about: ['National Senior Certificate examinations 2026', 'Grade 12 Mathematics', 'Grade 12 Physical Sciences'],
@@ -1080,6 +1083,208 @@ ${liveJs('')}
   return head({ file: TT_FILE, url, title, desc, css: CSS_BASE + CSS_SHARED + CSS_SUBJECT + CSS_TT, ld: [article, crumbs] }) + '\n' + body;
 }
 
+/* ---------- tutor-apply.html (Become a tutor) ---------- */
+const TUTOR_FILE = 'tutor-apply.html';
+const PROVINCES = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'];
+const TUTOR = {
+  lead: 'Adventuity runs live online lessons for Grade 12 learners across South Africa. We are looking for tutors who can explain Mathematics and Physical Sciences clearly, one-on-one or in small groups.',
+  who: 'Tutors who know Grade 12 (CAPS/NSC) Mathematics and/or Physical Sciences (Physics, Chemistry) well. If you teach Life Sciences or another subject, tell us in your application.',
+  work: 'Lessons are online – video, screen share and a whiteboard – one-on-one or in small groups. Afternoons and Saturdays are when learners book most. We discuss rates and hours at the interview.',
+  need: ['A qualification or studies in a related field', 'A laptop and a stable internet connection', 'Clear explanations that a learner can follow step by step'],
+  steps: [['Apply with your CV', 'Fill in the form below and upload your CV.'],
+    ['We review your application', 'Adventuity’s tutor reviews it, usually within a week.'],
+    ['Interview and demo lesson', 'A short online interview and a 10-minute demo lesson.'],
+    ['Start teaching', 'We agree on rates and hours, and you start teaching learners online.']],
+  popia: 'We use your details and CV only to consider you as a tutor for Adventuity. Only Adventuity’s tutor can see them; they’re stored securely and deleted after 12 months, or sooner if you ask – reply to the confirmation e-mail.',
+  consent: 'I agree that Adventuity may store and use my details and CV for this application.',
+};
+const SUBJECT_OPTS = [['maths', 'Mathematics'], ['phys', 'Physical Sciences – Physics'], ['chem', 'Physical Sciences – Chemistry'], ['lifesci', 'Life Sciences'], ['other', 'Other']];
+const MODE_OPTS = [['online', 'Online'], ['in_person', 'In person'], ['both', 'Both']];
+
+const CSS_FORM = `
+.steps{list-style:none;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));counter-reset:st}
+.steps li{counter-increment:st;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:6px;align-content:start}
+.steps li::before{content:counter(st);width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--mono);font-weight:600;font-size:.9rem;margin-bottom:4px}
+.steps p,.three p{color:var(--ink-2);font-size:.95rem}
+.three{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))}
+.three>.card{display:grid;gap:10px;align-content:start}
+.apply{max-width:860px}
+.form{display:grid;gap:26px}
+.form fieldset{border:0;padding:0;margin:0;display:grid;gap:14px;min-width:0}
+.form legend{font-family:var(--display);font-weight:700;font-size:1.12rem;padding:0;margin-bottom:4px}
+.fgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr))}
+.field{display:grid;gap:6px;min-width:0;align-content:start}
+.field>label,.group>legend.lbl{font-weight:600;font-size:.93rem;font-family:var(--body)}
+.group{border:0;padding:0;margin:0;display:grid;gap:8px;min-width:0}
+.req{color:var(--bad);font-weight:700}
+.opt{color:var(--ink-2);font-weight:400;font-size:.85rem}
+.hint{font-size:.84rem;color:var(--ink-2)}
+.form input[type=text],.form input[type=email],.form input[type=tel],.form input[type=number],.form select,.form textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;min-height:46px;width:100%;min-width:0}
+.form textarea{min-height:160px;resize:vertical;line-height:1.5}
+.form input:focus-visible,.form select:focus-visible,.form textarea:focus-visible{outline:3px solid var(--focus);outline-offset:1px;border-color:var(--accent)}
+.form [aria-invalid="true"]{border-color:var(--bad)!important}
+.form input[type=file]{font:inherit;color:var(--ink);width:100%;min-width:0;padding:12px;border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--surface-2)}
+.form input[type=file]::file-selector-button{font:inherit;font-weight:600;margin-right:12px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.err{color:var(--bad);font-size:.86rem;font-weight:600}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.check{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer;font-size:.93rem}
+.check input{width:18px;height:18px;margin:0;flex:none;accent-color:var(--accent)}
+.check:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.check:has(input:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
+.group[aria-invalid="true"] .check,.group.bad .check{border-color:var(--bad)}
+.counter{font-size:.82rem;color:var(--ink-2);justify-self:end;font-variant-numeric:tabular-nums}
+.counter.over{color:var(--bad);font-weight:600}
+.popia{font-size:.92rem;padding:12px 14px;border-radius:var(--r-sm);background:var(--surface-2);border-left:3px solid var(--accent)}
+.consent{display:flex;gap:12px;align-items:flex-start;min-height:44px;cursor:pointer;font-weight:500}
+.consent input{width:22px;height:22px;margin:1px 0 0;flex:none;accent-color:var(--accent)}
+.alert{padding:12px 14px;border-radius:var(--r-sm);background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad);font-weight:600}
+.alert.info{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.submit-row{display:grid;gap:12px}
+.submit-row .btn{justify-self:start}
+@media (max-width:520px){.submit-row .btn{justify-self:stretch}}
+.btn:disabled{opacity:.6;cursor:not-allowed;filter:none}
+.hp{position:absolute!important;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
+.done{display:grid;gap:10px;border-color:var(--good);box-shadow:inset 4px 0 0 var(--good)}
+.done:focus{outline:none}
+`;
+
+const TUTOR_JS = `<script>(function(){var f=document.getElementById('apply-form');if(!f)return;
+var C=window.ADV_CONFIG||{},E=f.elements,btn=f.querySelector('button[type=submit]'),al=document.getElementById('form-alert'),MAX=5*1024*1024,EXT=/\\.(pdf|docx?)$/i,
+TYPES=['','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],tried=false;
+E.started_at.value=String(Date.now());
+var ta=E.about,cnt=document.getElementById('about-count');function upd(){var n=ta.value.length;cnt.textContent=n+' / 1500';cnt.classList.toggle('over',n>1500)}ta.addEventListener('input',upd);upd();
+var url=C.supabaseUrl?String(C.supabaseUrl).replace(/\\/+$/,'')+'/functions/v1/tutor-apply':'';
+function say(t,info){al.textContent=t||'';al.className='alert'+(info?' info':'');al.hidden=!t}
+if(!url||!C.supabaseKey){btn.disabled=true;say('Applications open soon – please try again later.',true);return}
+function mark(n,msg){var e=document.getElementById('err-'+n);if(e){e.textContent=msg||'';e.hidden=!msg}var g=document.getElementById('g-'+n);
+ if(g){g.classList.toggle('bad',!!msg)}else{[].forEach.call(f.querySelectorAll('[name="'+n+'"]'),function(el){if(msg)el.setAttribute('aria-invalid','true');else el.removeAttribute('aria-invalid')})}}
+function val(n){return String(E[n].value||'').trim()}
+function check(){var bad=[];function need(n,ok,msg){mark(n,ok?'':msg);if(!ok)bad.push(n)}
+ need('full_name',val('full_name').length>=2,'Enter your full name.');
+ need('email',/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(val('email')),'Enter a valid e-mail address.');
+ need('phone',val('phone').replace(/\\D/g,'').length>=9,'Enter your WhatsApp number.');
+ need('subjects',f.querySelectorAll('input[name="subjects"]:checked').length>0,'Choose at least one subject.');
+ need('qualification',val('qualification').length>=2,'Enter your qualification, or what you are studying.');
+ var y=val('experience_years');need('experience_years',y===''||(/^\\d{1,2}$/.test(y)&&Number(y)<=50),'Enter a whole number from 0 to 50.');
+ need('about',ta.value.length<=1500,'Keep this to 1500 characters or fewer.');
+ var x=E.cv.files&&E.cv.files[0];
+ need('cv',!!x&&EXT.test(x.name)&&TYPES.indexOf(x.type)>=0&&x.size>0&&x.size<=MAX,!x?'Attach your CV.':(!EXT.test(x.name)||TYPES.indexOf(x.type)<0)?'Your CV must be a PDF or Word file (.pdf, .doc or .docx).':x.size>MAX?'Your CV is larger than 5 MB – please attach a smaller file.':'This file is empty – please attach your CV again.');
+ need('consent',E.consent.checked,'Tick the box to agree, so that we can process your application.');
+ return bad}
+function recheck(){if(tried){var b=check();if(!b.length&&/highlighted/.test(al.textContent))say('')}}
+f.addEventListener('input',recheck);f.addEventListener('change',recheck);
+function done(ref,email){var c=document.createElement('div');c.className='card done';c.setAttribute('role','status');c.tabIndex=-1;
+ var h=document.createElement('h2');h.textContent='Thank you – application '+(ref||'')+' received.';
+ var p=document.createElement('p');p.textContent='We’ll e-mail you within a week. A confirmation e-mail is on its way to '+email+' – if it does not arrive, check your spam folder.';
+ c.appendChild(h);c.appendChild(p);var box=f.parentNode;box.parentNode.replaceChild(c,box);c.focus()}
+f.addEventListener('submit',function(e){e.preventDefault();if(btn.disabled)return;tried=true;var bad=check();
+ if(bad.length){say('Please check the highlighted fields.');var g=document.getElementById('g-'+bad[0]),el=g?g.querySelector('input'):f.querySelector('[name="'+bad[0]+'"]');if(el)el.focus();return}
+ say('');btn.disabled=true;var label=btn.textContent;btn.textContent='Sending…';var email=val('email');
+ fetch(url,{method:'POST',headers:{apikey:C.supabaseKey},body:new FormData(f)}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){
+  if(r.ok&&j&&j.ok){done(j.ref,email);return}
+  throw new Error(j&&j.error?String(j.error):'Sorry, something went wrong (error '+r.status+'). Please try again.')})
+ }).catch(function(err){say(err instanceof TypeError?'Could not send your application – check your internet connection and try again.':err.message);btn.disabled=false;btn.textContent=label})})})();</script>`;
+
+function buildTutor() {
+  const url = BASE + TUTOR_FILE;
+  const title = 'Tutor jobs: teach Grade 12 Maths & Science | Adventuity';
+  const desc = 'Tutor Grade 12 Maths and Physical Sciences online with Adventuity: one-on-one and small-group lessons for matric learners across South Africa. Apply now.';
+  const h1 = 'Become a tutor: teach Grade 12 Maths and Physical Sciences online';
+  const REQ = ' <span class="req" aria-hidden="true">*</span>';
+  const OPT = ' <span class="opt">(optional)</span>';
+  const fld = (name, label, input, o = {}) => `<div class="field" id="f-${name}"><label for="in-${name}">${label}${o.req ? REQ : o.opt ? OPT : ''}</label>${o.hint ? `<p class="hint" id="hint-${name}">${o.hint}</p>` : ''}${input}<p class="err" id="err-${name}" hidden></p>${o.after || ''}</div>`;
+  const desc2 = (name, o) => [o.hint ? 'hint-' + name : '', 'err-' + name].filter(Boolean).join(' ');
+  const inp = (name, type, o = {}) => `<input id="in-${name}" name="${name}" type="${type}"${o.req ? ' required' : ''}${o.ac ? ` autocomplete="${o.ac}"` : ''}${o.max ? ` maxlength="${o.max}"` : ''}${o.ph ? ` placeholder="${esc(o.ph)}"` : ''}${o.extra || ''} aria-describedby="${desc2(name, o)}">`;
+  const group = (name, legend, type, opts, o = {}) => `<fieldset class="group" id="g-${name}" aria-describedby="err-${name}${o.hint ? ' hint-' + name : ''}"><legend class="lbl">${legend}${o.req ? REQ : ''}</legend>${o.hint ? `<p class="hint" id="hint-${name}">${o.hint}</p>` : ''}<div class="checks">${opts.map(([v, l], i) => `<label class="check"><input type="${type}" name="${name}" value="${v}"${o.checked === v ? ' checked' : ''}>${l}</label>`).join('')}</div><p class="err" id="err-${name}" hidden></p></fieldset>`;
+
+  const descHtml = `<p>${esc(TUTOR.lead)}</p><p><b>Who we’re looking for:</b> ${esc(TUTOR.who)}</p><p><b>The work:</b> ${esc(TUTOR.work)}</p><p><b>What you need:</b></p><ul>${TUTOR.need.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><p><b>How it works:</b></p><ol>${TUTOR.steps.map(([h, p]) => `<li>${esc(h)}: ${esc(p)}</li>`).join('')}</ol>`;
+  const job = {
+    '@context': 'https://schema.org', '@type': 'JobPosting', title: 'Online Grade 12 Mathematics and Physical Sciences Tutor',
+    description: descHtml, datePosted: '2026-10-12', validThrough: '2027-03-31T23:59:00+02:00', employmentType: ['PART_TIME', 'CONTRACTOR'],
+    hiringOrganization: { '@type': 'Organization', name: BRAND, sameAs: BASE, logo: BASE + 'icons/icon-512.png' },
+    jobLocationType: 'TELECOMMUTE', applicantLocationRequirements: { '@type': 'Country', name: 'South Africa' }, directApply: true, url,
+  };
+  const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: BASE }, { '@type': 'ListItem', position: 2, name: 'Teach with us', item: url }] };
+
+  const body = `<body>
+${topbar({ current: 'tutor' })}
+<main id="main" class="wrap page">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="./">Home</a></li><li><span aria-current="page">Teach with us</span></li></ol></nav>
+<section class="hero" aria-labelledby="h1">
+<p class="eyebrow">Tutor jobs · Online · South Africa</p>
+<h1 id="h1" style="margin-top:10px">${h1}</h1>
+<p class="lead">${esc(TUTOR.lead)}</p>
+<div class="cta-row"><a class="btn primary lg" href="#apply">Apply now</a><a class="btn lg" href="#how">How it works</a></div>
+</section>
+
+<div class="three sec">
+<section class="card" aria-labelledby="who"><h2 id="who">Who we’re looking for</h2><p>${esc(TUTOR.who)}</p></section>
+<section class="card" aria-labelledby="work"><h2 id="work">The work</h2><p>${esc(TUTOR.work)}</p></section>
+<section class="card" aria-labelledby="need"><h2 id="need">What you need</h2><ul class="ticks">${TUTOR.need.map((x) => `<li>${svg(CHECK)}<span>${esc(x)}</span></li>`).join('')}</ul></section>
+</div>
+
+<section class="sec" id="how" aria-labelledby="how-h"><h2 id="how-h" style="margin-bottom:16px">How it works</h2>
+<ol class="steps">${TUTOR.steps.map(([h, p]) => `<li><h3>${esc(h)}</h3><p>${esc(p)}</p></li>`).join('')}</ol>
+</section>
+
+<section class="sec apply" id="apply" aria-labelledby="apply-h">
+<h2 id="apply-h" style="margin-bottom:6px">Apply to tutor with Adventuity</h2>
+<p class="muted" style="margin-bottom:18px">It takes about ten minutes. Fields marked <span class="req">*</span> are required.</p>
+<div class="card">
+<noscript><p class="alert info">Please switch on JavaScript in your browser to send an application.</p></noscript>
+<form id="apply-form" class="form" action="#" method="post" enctype="multipart/form-data" novalidate>
+<fieldset><legend>Your details</legend>
+<div class="fgrid">
+${fld('full_name', 'Full name', inp('full_name', 'text', { req: 1, ac: 'name', max: 120 }), { req: 1 })}
+${fld('email', 'E-mail', inp('email', 'email', { req: 1, ac: 'email', max: 160, ph: 'you@example.com' }), { req: 1 })}
+${fld('phone', 'WhatsApp number', inp('phone', 'tel', { req: 1, ac: 'tel', max: 20, ph: '082 123 4567', extra: ' inputmode="tel"' }), { req: 1 })}
+${fld('province', 'Province', `<select id="in-province" name="province" aria-describedby="err-province"><option value="">Choose a province</option>${PROVINCES.map((p) => `<option>${p}</option>`).join('')}</select>`, { opt: 1 })}
+${fld('town', 'Town or city', inp('town', 'text', { ac: 'address-level2', max: 80 }), { opt: 1 })}
+</div>
+</fieldset>
+<fieldset><legend>What you teach</legend>
+${group('subjects', 'Subjects you can teach', 'checkbox', SUBJECT_OPTS, { req: 1, hint: 'Choose at least one. For Life Sciences or another subject, tell us more under “About you”.' })}
+${group('grades', 'Grades', 'checkbox', [['10', 'Grade 10'], ['11', 'Grade 11'], ['12', 'Grade 12']])}
+<div class="fgrid">
+${fld('qualification', 'Qualification or current studies', inp('qualification', 'text', { req: 1, max: 160, ph: 'e.g. BSc Physics (2023) or BEd, 3rd year' }), { req: 1 })}
+${fld('institution', 'University or college', inp('institution', 'text', { max: 160 }), { opt: 1 })}
+${fld('experience_years', 'Years of tutoring or teaching', inp('experience_years', 'number', { extra: ' min="0" max="50" step="1" inputmode="numeric"' }), { opt: 1 })}
+${fld('availability', 'When can you teach?', inp('availability', 'text', { max: 200, ph: 'e.g. Mon–Thu 16:00–20:00, Sat mornings' }), { opt: 1 })}
+</div>
+${group('mode', 'How would you like to teach?', 'radio', MODE_OPTS, { checked: 'online' })}
+</fieldset>
+<fieldset><legend>In your own words</legend>
+${fld('about', 'About you', `<textarea id="in-about" name="about" maxlength="1500" aria-describedby="hint-about about-count err-about"></textarea>`, { opt: 1, hint: 'Why do you tutor? And how would you explain a topic that learners find hard?', after: '<p class="counter" id="about-count" aria-live="off">0 / 1500</p>' })}
+${fld('referral', 'How did you hear about us?', inp('referral', 'text', { max: 160 }), { opt: 1 })}
+</fieldset>
+<fieldset><legend>Your CV</legend>
+${fld('cv', 'Upload your CV', inp('cv', 'file', { req: 1, hint: 1, extra: ' accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"' }), { req: 1, hint: 'PDF or Word (.pdf, .doc or .docx), 5 MB or smaller.' })}
+</fieldset>
+<div class="field" id="f-consent">
+<p class="popia" id="popia">${esc(TUTOR.popia)}</p>
+<label class="consent"><input type="checkbox" id="in-consent" name="consent" value="yes" required aria-describedby="popia err-consent"><span>${esc(TUTOR.consent)}${REQ}</span></label>
+<p class="err" id="err-consent" hidden></p>
+</div>
+<div class="hp" aria-hidden="true"><label for="in-website">Website</label><input id="in-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+<input type="hidden" name="started_at" value="">
+<div class="submit-row">
+<div class="alert" id="form-alert" role="alert" aria-live="assertive" hidden></div>
+<button class="btn primary lg" type="submit">Send application</button>
+</div>
+</form>
+</div>
+</section>
+</main>
+${footer({ current: 'tutor', live: true })}
+${liveJs('')}
+${TUTOR_JS}
+</body>
+</html>
+`;
+  return head({ file: TUTOR_FILE, url, title, desc, css: CSS_BASE + CSS_SHARED + CSS_SUBJECT + CSS_TOPIC + CSS_FORM, ld: [job, crumbs] }) + '\n' + body;
+}
+
 /* ---------- 404 ---------- */
 function build404() {
   const body = `<body>
@@ -1108,7 +1313,7 @@ ${footer({ current: '404', abs: true })}
 /* ---------- sitemap / robots ---------- */
 const sitemap = () => `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${[['', '1.0'], ['maths.html', '0.9'], ['physical-sciences.html', '0.9'], [TT_FILE, '0.8'], ...ALL.map((t) => ['topics/' + t.id + '.html', '0.7'])].map(([p, pr]) => `  <url><loc>${BASE}${p}</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>${pr}</priority></url>`).join('\n')}
+${[['', '1.0'], ['maths.html', '0.9'], ['physical-sciences.html', '0.9'], [TT_FILE, '0.8'], ...ALL.map((t) => ['topics/' + t.id + '.html', '0.7']), ['tutor-apply.html', '0.6']].map(([p, pr]) => `  <url><loc>${BASE}${p}</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>${pr}</priority></url>`).join('\n')}
 </urlset>
 `;
 const robots = () => `User-agent: *
@@ -1167,6 +1372,7 @@ async function renderOg(file) {
     'physical-sciences.html': buildSubject('sci'),
     [TT_FILE]: buildTimetable(),
     ...Object.fromEntries(ALL.map((t) => ['topics/' + t.id + '.html', buildTopic(t)])),
+    [TUTOR_FILE]: buildTutor(),
     '404.html': build404(),
     'sitemap.xml': sitemap(),
     'robots.txt': robots(),

@@ -59,6 +59,7 @@
       rpc(fn, args) { return call('/rest/v1/rpc/' + fn, { method: 'POST', json: args || {} }); },
       fn(name, body) { return call('/functions/v1/' + name, { method: 'POST', json: body || {} }); },
       async upload(bucket, path, file) { return call('/storage/v1/object/' + bucket + '/' + path, { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } }); },
+      removeObject(bucket, path) { return call('/storage/v1/object/' + bucket + '/' + path, { method: 'DELETE' }); },
       async signedUrl(bucket, path, seconds) { const r = await call('/storage/v1/object/sign/' + bucket + '/' + path, { method: 'POST', json: { expiresIn: seconds || 600 } }); return URL + '/storage/v1' + (r.signedURL || r.signedUrl); }
     };
   };

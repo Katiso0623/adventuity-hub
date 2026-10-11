@@ -92,6 +92,7 @@
     if (!state.profile) return;
     const before = new Map(state.bookings.map((b) => [b.id, b.status]));
     await ADV.loadBookings(); const unreadBefore = state.badges.messages || 0; await loadUnread();
+    if (state.isAdmin && ADV.adminTick) { try { await ADV.adminTick(state.ticked); } catch (e) { /* offline */ } }
     if (state.isAdmin) {
       const pend = state.bookings.filter((b) => b.status === 'pending' && new Date(b.starts_at) > ADV.now());
       state.badges.dash = pend.length;

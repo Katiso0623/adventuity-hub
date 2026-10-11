@@ -328,6 +328,46 @@ create policy "pop: learner uploads own" on storage.objects for insert to authen
 drop policy if exists "pop: own or admin read" on storage.objects;
 create policy "pop: own or admin read" on storage.objects for select to authenticated using (bucket_id = 'pop' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin()));
 
+-- ---------------------------------------------------------------- tutor applications (public form → edge function → tutor only)
+create table if not exists public.tutor_applications (
+  id uuid primary key default gen_random_uuid(),
+  ref text not null unique default ('T-' || upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6))),
+  created_at timestamptz not null default now(),
+  full_name text not null check (length(full_name) between 2 and 120),
+  email text not null check (length(email) between 5 and 200),
+  phone text not null check (length(phone) between 9 and 30),
+  province text default '',
+  town text default '',
+  subjects text[] not null default '{}',
+  grades text[] not null default '{}',
+  qualification text not null check (length(qualification) between 2 and 200),
+  institution text default '',
+  experience_years int default 0 check (experience_years between 0 and 50),
+  mode text not null default 'online' check (mode in ('online','in_person','both')),
+  availability text default '',
+  about text default '' check (length(about) <= 1500),
+  referral text default '',
+  cv_path text,
+  cv_name text,
+  cv_size int,
+  status text not null default 'new' check (status in ('new','shortlisted','interview','accepted','declined')),
+  admin_notes text default '',
+  consent_at timestamptz not null default now(),
+  ip_hash text
+);
+create index if not exists tutor_applications_created on public.tutor_applications(created_at desc);
+create index if not exists tutor_applications_email on public.tutor_applications(lower(email));
+create index if not exists tutor_applications_ip on public.tutor_applications(ip_hash, created_at);
+alter table public.tutor_applications enable row level security;
+-- no insert policy: only the tutor-apply edge function (service key) adds applications
+create policy "tutor applications: tutor only" on public.tutor_applications for all using (public.is_admin()) with check (public.is_admin());
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('cvs', 'cvs', false, 5242880, array['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
+on conflict (id) do nothing;
+create policy "cvs: tutor reads" on storage.objects for select to authenticated using (bucket_id = 'cvs' and public.is_admin());
+create policy "cvs: tutor deletes" on storage.objects for delete to authenticated using (bucket_id = 'cvs' and public.is_admin());
+
 -- ---------------------------------------------------------------- function grants (least privilege)
 revoke execute on function public.guard_profile() from public, anon, authenticated;
 revoke execute on function public.handle_new_user() from public, anon, authenticated;

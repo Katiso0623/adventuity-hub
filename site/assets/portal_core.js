@@ -88,7 +88,7 @@
 
   /* ---------------------------------------------------------------- tabs */
   const LEARNER_TABS = [['home', 'Home', 'home'], ['book', 'Book', 'plus'], ['lessons', 'My lessons', 'cal'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['progress', 'Progress', 'chart'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
-  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
+  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
   const tabs = () => (state.isAdmin ? ADMIN_TABS : LEARNER_TABS);
   const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : ['home', 'book', 'lessons', 'maths']);
   ADV.go = function (tab, topic, opts) {
