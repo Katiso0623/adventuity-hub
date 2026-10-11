@@ -1,6 +1,6 @@
 /* Adventuity service worker: offline app shell, encrypted notes cache, push notifications. */
-const CACHE = 'adv-20261012000921';
-const SHELL = ["./portal.html", "./config.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/favicon-32.png", "./assets/app.css?v=20261012000921", "./assets/mj-config.js?v=20261012000921", "./assets/sbmini.js?v=20261012000921", "./assets/steps.js?v=20261012000921", "./assets/figlib.js?v=20261012000921", "./assets/outline.js?v=20261012000921", "./assets/portal_core.js?v=20261012000921", "./assets/portal_msgs.js?v=20261012000921", "./assets/portal_study.js?v=20261012000921", "./assets/portal_admin.js?v=20261012000921", "./assets/boot.js?v=20261012000921"];
+const CACHE = 'adv-20261012001310';
+const SHELL = ["./portal.html", "./config.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/favicon-32.png", "./assets/app.css?v=20261012001310", "./assets/mj-config.js?v=20261012001310", "./assets/sbmini.js?v=20261012001310", "./assets/steps.js?v=20261012001310", "./assets/figlib.js?v=20261012001310", "./assets/outline.js?v=20261012001310", "./assets/portal_core.js?v=20261012001310", "./assets/portal_msgs.js?v=20261012001310", "./assets/portal_study.js?v=20261012001310", "./assets/portal_admin.js?v=20261012001310", "./assets/boot.js?v=20261012001310"];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
