@@ -1,0 +1,13 @@
+secrets/
+out/
+dist/
+public/
+node_modules/
+# plain study material is never committed (it ships only encrypted in site/content.bin)
+maths_*.js
+physics.js
+chem.js
+practice_*.js
+figs_*.js
+bundle.json
+*.xlsx

@@ -1,0 +1,27 @@
+/* ---- worked steps ---- */
+.steps{counter-reset:st;list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.steps .st{counter-increment:st;position:relative;padding:10px 12px 10px 44px;background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0;overflow-x:auto}
+.steps .st::before{content:counter(st);position:absolute;left:10px;top:10px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--surface);display:grid;place-items:center;font-family:var(--mono);font-size:.78rem;font-weight:600}
+.st-say{font-weight:500;margin-bottom:2px}
+.st-note{font-size:.85rem;color:var(--ink-2);margin-top:4px}
+.m-line{padding:2px 0}
+.m-disp{padding:2px 0 2px 4px;overflow-x:auto;overflow-y:hidden;font-size:1.06rem}
+.m-disp mjx-container[display="true"]{margin:4px 0 !important;text-align:left !important}
+.m-then{color:var(--fig2);font-weight:700;font-size:.95rem;padding-left:2px;line-height:1}
+/* ---- marking memo ---- */
+.memo-lines{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.mm{display:grid;grid-template-columns:3.6rem 1fr;gap:8px;align-items:start}
+.mm-label{font-family:var(--mono);font-size:.82rem;font-weight:600;color:var(--ink);padding-top:3px}
+.mm-body{display:grid;gap:2px;min-width:0}
+.mm-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:baseline;padding:3px 0;border-bottom:1px dotted var(--line);min-width:0}
+.mm-row:last-child{border-bottom:0}
+.mm-text{min-width:0;overflow-x:auto;overflow-y:hidden}
+.mm-ticks{color:var(--good);font-weight:700;letter-spacing:1px;white-space:nowrap;min-width:1.2em;text-align:right}
+.m-arrow{color:var(--fig2);font-weight:700}
+@media (max-width:520px){.mm{grid-template-columns:1fr}.mm-label{padding-top:0}}
+/* ---- question layout ---- */
+.q-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:baseline;padding:3px 0}
+.q-stem{grid-template-columns:1fr;padding-bottom:6px}
+.q-num{font-family:var(--mono);font-weight:600;font-size:.88rem;min-width:2.6rem}
+.q-txt{min-width:0;overflow-wrap:anywhere}
+.q-mk{font-family:var(--mono);font-size:.85rem;color:var(--ink-2);white-space:nowrap}

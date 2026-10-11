@@ -1,0 +1,111 @@
+{
+  "brand": "Adventuity",
+  "tagline": "Grade 12 Maths & Physical Sciences · NSC 2026",
+  "tutorName": "",
+  "slogan": "Transforming ideas into reality.",
+  "meetUrl": "",
+  "bookingUrl": "",
+  "driveUrl": "",
+  "whatsappNumber": "",
+  "whatsappGroupUrl": "",
+  "announcements": "Welcome to the Adventuity learning hub. Lessons run on Google Meet – tap Join on the Lessons tab a few minutes before we start. Work through the Maths and Sciences tabs between lessons and tick topics off as you go.",
+  "exams": [
+    {
+      "id": "mp1",
+      "subject": "Mathematics",
+      "paper": "Paper 1",
+      "when": "2026-10-23T09:00:00+02:00",
+      "hours": 3,
+      "marks": 150,
+      "subj": "maths"
+    },
+    {
+      "id": "mp2",
+      "subject": "Mathematics",
+      "paper": "Paper 2",
+      "when": "2026-10-26T09:00:00+02:00",
+      "hours": 3,
+      "marks": 150,
+      "subj": "maths"
+    },
+    {
+      "id": "pp1",
+      "subject": "Physical Sciences",
+      "paper": "Paper 1 (Physics)",
+      "when": "2026-10-30T09:00:00+02:00",
+      "hours": 3,
+      "marks": 150,
+      "subj": "phys"
+    },
+    {
+      "id": "pp2",
+      "subject": "Physical Sciences",
+      "paper": "Paper 2 (Chemistry)",
+      "when": "2026-11-02T09:00:00+02:00",
+      "hours": 3,
+      "marks": 150,
+      "subj": "chem"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "s1",
+      "date": "2026-10-13",
+      "time": "18:00",
+      "duration": 90,
+      "subj": "maths",
+      "title": "Maths P1 crash session: algebra, cubic polynomials, sequences",
+      "topics": [
+        "cubic",
+        "sequences"
+      ],
+      "meetUrl": "",
+      "materialsUrl": "",
+      "recordingUrl": "",
+      "notes": "Bring the 2025 November Paper 1 if you have it.",
+      "seats": [],
+      "example": true
+    },
+    {
+      "id": "s2",
+      "date": "2026-10-15",
+      "time": "18:00",
+      "duration": 90,
+      "subj": "maths",
+      "title": "Maths P1 crash session: functions, inverses and calculus",
+      "topics": [
+        "functions",
+        "calculus"
+      ],
+      "meetUrl": "",
+      "materialsUrl": "",
+      "recordingUrl": "",
+      "notes": "",
+      "seats": [],
+      "example": true
+    },
+    {
+      "id": "s3",
+      "date": "2026-10-17",
+      "time": "10:00",
+      "duration": 120,
+      "subj": "phys",
+      "title": "Physics: Newton's laws, momentum and projectiles",
+      "topics": [
+        "newton",
+        "momentum",
+        "projectiles"
+      ],
+      "meetUrl": "",
+      "materialsUrl": "",
+      "recordingUrl": "",
+      "notes": "",
+      "seats": [],
+      "example": true
+    }
+  ],
+  "roomName": "AdventuityGr12-akoscfrz",
+  "tutorEmail": "kaytkayt5@gmail.com",
+  "availability": "Mon-Fri 16:00-20:00; Sat 09:00-13:00",
+  "slotMinutes": 60
+}

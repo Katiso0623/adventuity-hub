@@ -1,0 +1,276 @@
+/* Adventuity portal – tutor (administrator) dashboard: requests, lessons, learners, classes, money, settings. */
+(function () {
+  'use strict';
+  const ADV = window.ADV; const { $, $$, esc, fmt, pill, ICON, state, sb, SUBJ, toast } = ADV; const CFG = ADV.cfg;
+  const now = ADV.now;
+  const rid = (n) => { const a = new Uint8Array(n || 8); crypto.getRandomValues(a); return Array.from(a, (x) => 'abcdefghijkmnpqrstuvwxyz23456789'[x % 32]).join(''); };
+  const portalUrl = () => location.origin + location.pathname;
+  const tutorName = () => (state.settings.site && state.settings.site.tutorName) || state.profile.full_name || 'Tutor';
+  const learnerOf = (b) => (b.profiles || (state.learners || []).find((l) => l.id === b.learner_id) || {});
+
+  /* ---------------------------------------------------------------- data */
+  ADV.adminInit = async function () {
+    await Promise.all([loadLearners(), loadClassRooms()]);
+    if (ADV.startPolling) ADV.startPolling();
+  };
+  async function loadLearners() { try { state.learners = await sb.select('profiles', { order: 'created_at.desc' }); } catch (e) { state.learners = state.learners || []; } }
+  async function loadClassRooms() { try { const r = await sb.select('class_private', {}); state.rooms = {}; r.forEach((x) => { state.rooms[x.class_id] = x; }); } catch (e) { state.rooms = {}; } }
+  const reload = async () => { await ADV.loadBookings(); const y = window.scrollY; ADV.render(); window.scrollTo(0, y); };
+  const upcoming = () => state.bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) > now()).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  const pending = () => state.bookings.filter((b) => b.status === 'pending' && new Date(b.starts_at) > now()).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  const clashes = (b) => state.bookings.filter((x) => x.id !== b.id && x.status === 'accepted' && new Date(x.starts_at) < new Date(b.ends_at) && new Date(x.ends_at) > new Date(b.starts_at) && !(b.class_id && x.class_id === b.class_id));
+  const monthKey = (d) => fmt.key(d).slice(0, 7);
+
+  /* ---------------------------------------------------------------- booking cards */
+  function whoLine(b) {
+    const l = learnerOf(b);
+    return '<div class="row" style="gap:8px"><b>' + esc(l.full_name || 'Learner') + '</b>' + (l.school ? '<span class="small muted">' + esc(l.school) + '</span>' : '') + (l.phone ? '<a class="small" href="' + esc(ADV.wa(l.phone)) + '" target="_blank" rel="noopener">WhatsApp ' + esc(l.phone) + '</a>' : '') + '<button class="chipbtn" data-action="msg-learner" data-id="' + b.learner_id + '">' + ICON.chat + ' Message</button></div>';
+  }
+  function bookingCard(b) {
+    const s = new Date(b.starts_at); const jw = ADV.joinWindow(b); const room = ADV.bookingRoom(b) || (b.class_id && state.rooms[b.class_id] && state.rooms[b.class_id].room);
+    const title = b.class_id ? ((state.classes.find((c) => c.id === b.class_id) || {}).title || 'Group class') : SUBJ[b.subject].name + ' – one-on-one';
+    const mins = Math.round((new Date(b.ends_at) - s) / 6e4); const cl = b.status === 'pending' ? clashes(b) : [];
+    const edit = state.editB === b.id;
+    let body = '<div class="row" style="gap:6px">' + ADV.statusPill(b) + pill(b.subject, SUBJ[b.subject].short) + pill('', fmt.mins(mins)) + (b.status !== 'pending' && b.status !== 'declined' && b.status !== 'cancelled' ? (b.paid ? pill('good', 'Paid ' + fmt.rand(b.fee)) : pill('warn', 'Unpaid ' + fmt.rand(b.fee))) : pill('', fmt.rand(b.fee))) + (b.pop_path ? '<button class="chipbtn" data-action="pop-view" data-id="' + b.id + '">Proof of payment</button>' : '') + '<span class="mono small muted">Ref ' + esc(b.ref) + '</span></div>' +
+      '<h3 style="margin-top:6px">' + esc(title) + '</h3><p class="small muted">' + esc(fmt.long(s)) + ' · ' + esc(fmt.time(s)) + '–' + esc(fmt.time(b.ends_at)) + (b.topics ? ' · ' + esc(ADV.topicNames(b.topics)) : '') + '</p>' + whoLine(b) +
+      (b.learner_note ? '<p class="tutor-msg"><b>Learner:</b> ' + esc(b.learner_note) + '</p>' : '') + (b.admin_message ? '<p class="tutor-msg"><b>You:</b> ' + esc(b.admin_message) + '</p>' : '') +
+      (cl.length ? '<p class="warnline">' + ICON.clock + ' Clashes with ' + cl.map((x) => esc(learnerOf(x).full_name || 'a lesson') + ' ' + fmt.time(x.starts_at) + '–' + fmt.time(x.ends_at)).join(', ') + '</p>' : '');
+    if (b.status === 'pending') {
+      body += '<div class="decide"><div class="grid cols-2"><div class="field"><label for="msg-' + b.id + '">Message to the learner (optional)</label><input id="msg-' + b.id + '" placeholder="e.g. See you then – bring your 2024 P1"></div><div class="field"><label for="fee-' + b.id + '">Fee (R)</label><input id="fee-' + b.id + '" type="number" min="0" step="10" value="' + Number(b.fee) + '"></div></div>' +
+        (edit ? '<div class="grid cols-3"><div class="field"><label for="nd-' + b.id + '">New date</label><input id="nd-' + b.id + '" type="date" value="' + fmt.key(s) + '"></div><div class="field"><label for="nt-' + b.id + '">New start time</label><input id="nt-' + b.id + '" type="time" step="900" value="' + fmt.time(s) + '"></div><div class="field"><label for="nm-' + b.id + '">Minutes</label><input id="nm-' + b.id + '" type="number" min="30" step="15" value="' + mins + '"></div></div>' : '') +
+        '<div class="row"><button class="btn primary" data-action="b-accept" data-id="' + b.id + '">' + ICON.check + (edit ? 'Accept at the new time' : 'Accept') + '</button>' + (b.class_id ? '' : '<button class="btn" data-action="b-move" data-id="' + b.id + '">' + (edit ? 'Keep the asked time' : 'Change the time') + '</button>') + '<button class="btn ghost" data-action="b-decline" data-id="' + b.id + '">' + ICON.x + 'Decline</button></div></div>';
+    } else if (b.status === 'accepted') {
+      const l = learnerOf(b);
+      const waMsg = 'Hi ' + ((l.full_name || '').split(' ')[0] || '') + ', your ' + SUBJ[b.subject].short + ' lesson is confirmed for ' + fmt.long(s) + ' at ' + fmt.time(s) + '. Join from the Adventuity portal: ' + portalUrl() + '#lessons';
+      body += '<div class="row" style="margin-top:10px">' + (room ? '<a class="btn ' + (jw.open ? 'primary' : '') + '" href="' + esc(ADV.roomUrl(room, tutorName())) + '" target="_blank" rel="noopener">' + ICON.video + 'Start lesson</a>' : '') +
+        (l.phone ? '<a class="btn sm" href="' + esc(ADV.wa(l.phone, waMsg)) + '" target="_blank" rel="noopener">Remind on WhatsApp</a>' : '') +
+        '<button class="btn sm" data-action="b-paid" data-id="' + b.id + '">' + (b.paid ? 'Mark unpaid' : ICON.money + 'Mark paid') + '</button>' +
+        (new Date(b.starts_at) < now() ? '<button class="btn sm" data-action="b-complete" data-id="' + b.id + '">' + ICON.check + 'Completed</button>' : '') +
+        '<button class="btn sm ghost" data-action="b-tcancel" data-id="' + b.id + '">Cancel lesson</button></div>';
+    } else if (b.status === 'completed') {
+      body += '<div class="row" style="margin-top:10px"><button class="btn sm" data-action="b-paid" data-id="' + b.id + '">' + (b.paid ? 'Mark unpaid' : ICON.money + 'Mark paid') + '</button></div>';
+    }
+    return '<div class="card lesson' + (['declined', 'cancelled', 'completed'].includes(b.status) || (b.status === 'accepted' && jw.over) ? ' past' : '') + '" id="b-' + b.id + '"><div class="date"><span>' + esc(fmt.wd(s)) + '</span><b>' + esc(fmt.day(s)) + '</b><span>' + esc(fmt.mon(s)) + '</span></div><div style="min-width:0">' + body + '</div></div>';
+  }
+
+  /* ---------------------------------------------------------------- dashboard */
+  ADV.views.dash = function () {
+    const p = pending(), up = upcoming(); const week = up.filter((b) => new Date(b.starts_at) - now() < 7 * 864e5);
+    const owed = state.bookings.filter((b) => ['accepted', 'completed'].includes(b.status) && !b.paid && new Date(b.starts_at) < now()).reduce((n, b) => n + Number(b.fee), 0);
+    const mk = monthKey(now()); const got = state.bookings.filter((b) => b.paid && monthKey(b.paid_at || b.starts_at) === mk).reduce((n, b) => n + Number(b.fee), 0);
+    const first = (state.profile.full_name || '').split(' ')[0];
+    const hr = Number(new Intl.DateTimeFormat('en-ZA', { hour: 'numeric', hour12: false, timeZone: 'Africa/Johannesburg' }).format(now()));
+    const kpi = (label, val, go, cls) => '<button class="cd kpi ' + (cls || '') + '" data-go="tab" data-id="' + go + '"><span class="eyebrow">' + label + '</span><div class="big">' + val + '</div></button>';
+    const newL = (state.learners || []).filter((l) => l.role !== 'admin' && !l.approved && !l.blocked);
+    return '<div class="stack"><div><span class="eyebrow">Tutor dashboard</span><h1>' + (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + esc(first) : '') + '</h1></div>' +
+      '<div class="grid cols-4">' + kpi('Requests waiting', p.length, 'bookings', p.length ? 'hot' : '') + kpi('Lessons in 7 days', week.length, 'bookings') + kpi('Owed to you', fmt.rand(owed), 'money') + kpi('Received this month', fmt.rand(got), 'money') + '</div>' +
+      (p.length ? '<h2>Waiting for your answer</h2>' + p.map(bookingCard).join('') : '<div class="card row">' + ICON.check + '<span>No requests waiting. New requests show up here, on your phone (turn on notifications below) and in your e-mail.</span></div>') +
+      (newL.length ? '<div class="card"><div class="row" style="justify-content:space-between"><h3>' + newL.length + ' new learner' + (newL.length > 1 ? 's' : '') + ' waiting for access to the notes</h3><button class="btn sm" data-go="tab" data-id="learners">Open learners</button></div><p class="small muted" style="margin-top:4px">' + newL.slice(0, 6).map((l) => esc(l.full_name || l.email)).join(', ') + '</p></div>' : '') +
+      '<h2>Coming up</h2>' + (up.length ? up.slice(0, 8).map(bookingCard).join('') : '<div class="card"><p class="muted">No confirmed lessons yet.</p></div>') +
+      shareCard() + (ADV.pushCard ? ADV.pushCard('Get an alert on this device for every new booking request and message.') : '') + '</div>';
+  };
+  function shareCard() {
+    const link = portalUrl(); const site = link.replace(/portal\.html$/, '');
+    const msg = 'Hi! Book your Grade 12 Maths / Physical Sciences lessons with ' + ((state.settings.site && state.settings.site.brand) || 'Adventuity') + ' here: ' + site + ' – create a free account, pick a time and I confirm it. You can also install it as an app on your phone.';
+    return '<div class="card"><span class="eyebrow">Invite learners</span><h3 style="margin-top:4px">Share your booking link</h3><div class="copybox" style="margin-top:10px"><code>' + esc(site) + '</code><button class="btn sm" data-action="copy" data-v="' + esc(site) + '">Copy</button></div><div class="row" style="margin-top:10px"><a class="btn sm primary" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener">Share on WhatsApp</a><button class="btn sm" data-action="copy" data-v="' + esc(msg) + '">Copy invitation text</button></div></div>';
+  }
+  ADV.actions.copy = (a) => ADV.copy(a.dataset.v);
+  ADV.actions['msg-learner'] = (a) => ADV.openThread(a.dataset.id);
+
+  /* ---------------------------------------------------------------- booking actions */
+  async function setBooking(id, patch, event, okMsg) {
+    try { await sb.update('bookings', { id: 'eq.' + id }, patch); if (event) ADV.notify(id, event); toast(okMsg || 'Saved'); state.editB = null; await reload(); }
+    catch (e) { toast(ADV.errMsg(e), 5000); }
+  }
+  ADV.actions['b-move'] = (a) => { state.editB = state.editB === a.dataset.id ? null : a.dataset.id; ADV.render(); const el = $('#b-' + a.dataset.id); if (el) el.scrollIntoView({ block: 'center' }); };
+  ADV.actions['b-accept'] = async (a) => {
+    const id = a.dataset.id; const b = state.bookings.find((x) => x.id === id); const patch = { status: 'accepted', admin_message: ($('#msg-' + id) || {}).value || '' };
+    const fee = Number(($('#fee-' + id) || {}).value); if (isFinite(fee) && fee >= 0) patch.fee = fee;
+    if (state.editB === id) { const d = $('#nd-' + id).value, t = $('#nt-' + id).value, m = Number($('#nm-' + id).value) || 60; if (!d || !t) return toast('Choose the new date and time'); const s = ADV.sast(d, t); patch.starts_at = s.toISOString(); patch.ends_at = new Date(+s + m * 6e4).toISOString(); }
+    const link = state.priv.meeting && state.priv.meeting.link;
+    patch.room = b.class_id ? ((state.rooms[b.class_id] || {}).room || 'AdventuityClass-' + rid(10)) : (link || 'AdventuityLesson-' + rid(10));
+    const test = Object.assign({}, b, patch); const cl = clashes(test);
+    if (cl.length && !confirm('This overlaps another confirmed lesson. Accept anyway?')) return;
+    a.disabled = true; await setBooking(id, patch, 'accepted', 'Accepted – the learner has been notified');
+  };
+  ADV.actions['b-decline'] = async (a) => { const id = a.dataset.id; let m = ($('#msg-' + id) || {}).value || ''; if (!m) m = prompt('Optional message to the learner (e.g. suggest other times):', '') || ''; await setBooking(id, { status: 'declined', admin_message: m }, 'declined', 'Declined – the learner has been notified'); };
+  ADV.actions['b-paid'] = async (a) => { const b = state.bookings.find((x) => x.id === a.dataset.id); await setBooking(b.id, b.paid ? { paid: false, paid_at: null } : { paid: true, paid_at: new Date().toISOString() }, b.paid ? null : 'paid', b.paid ? 'Marked unpaid' : 'Marked paid – the learner gets a receipt notice'); };
+  ADV.actions['b-complete'] = (a) => setBooking(a.dataset.id, { status: 'completed' }, null, 'Marked completed');
+  ADV.actions['b-tcancel'] = async (a) => { const m = prompt('Cancel this lesson? Optional message to the learner:', ''); if (m === null) return; await setBooking(a.dataset.id, { status: 'cancelled', admin_message: m || 'The tutor cancelled this lesson.' }, 'updated', 'Lesson cancelled – the learner has been notified'); };
+  ADV.actions['pop-view'] = async (a) => { const b = state.bookings.find((x) => x.id === a.dataset.id); const w = window.open('', '_blank'); try { const u = await sb.signedUrl('pop', b.pop_path, 600); if (w) w.location = u; else location.href = u; } catch (e) { if (w) w.close(); toast(ADV.errMsg(e)); } };
+
+  /* ---------------------------------------------------------------- bookings list */
+  ADV.views.bookings = function () {
+    const f = state.bFilter || 'upcoming'; const q = (state.bq || '').toLowerCase();
+    const sets = { requests: pending(), upcoming: state.bookings.filter((b) => ['pending', 'accepted'].includes(b.status) && new Date(b.ends_at) > now()).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)), past: state.bookings.filter((b) => b.status === 'completed' || (b.status === 'accepted' && new Date(b.ends_at) <= now())).sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at)), closed: state.bookings.filter((b) => ['declined', 'cancelled'].includes(b.status)).sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at)), all: state.bookings.slice().sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at)) };
+    const listB = (sets[f] || []).filter((b) => !q || ((learnerOf(b).full_name || '') + ' ' + b.ref + ' ' + (learnerOf(b).school || '')).toLowerCase().includes(q));
+    const seg = (k, l) => '<button class="' + (f === k ? 'on' : '') + '" data-action="b-filter" data-id="' + k + '">' + l + (k === 'requests' && sets.requests.length ? ' (' + sets.requests.length + ')' : '') + '</button>';
+    return '<div class="stack"><div class="row" style="justify-content:space-between;align-items:flex-end"><div><span class="eyebrow">Bookings</span><h1>Bookings</h1></div><div class="row"><button class="btn sm" data-action="csv-bookings">Download CSV</button></div></div>' +
+      '<div class="seg">' + seg('requests', 'Requests') + seg('upcoming', 'Upcoming') + seg('past', 'Past') + seg('closed', 'Declined/cancelled') + seg('all', 'All') + '</div>' +
+      '<div class="card search"><input id="bq" type="search" placeholder="Search by learner, school or reference" value="' + esc(state.bq || '') + '" aria-label="Search bookings"></div>' +
+      (listB.length ? listB.map(bookingCard).join('') : '<div class="card"><p class="muted">Nothing here.</p></div>') + '</div>';
+  };
+  ADV.actions['b-filter'] = (a) => { state.bFilter = a.dataset.id; ADV.render(); };
+  const csv = (rows) => rows.map((r) => r.map((x) => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  const download = (name, text) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
+  ADV.actions['csv-bookings'] = () => download('adventuity-bookings-' + fmt.key(now()) + '.csv', csv([['Reference', 'Date', 'Start', 'End', 'Learner', 'Phone', 'School', 'Subject', 'Kind', 'Topics', 'Status', 'Fee (R)', 'Paid', 'Paid on']].concat(state.bookings.map((b) => { const l = learnerOf(b); return [b.ref, fmt.key(b.starts_at), fmt.time(b.starts_at), fmt.time(b.ends_at), l.full_name, l.phone, l.school, SUBJ[b.subject].short, b.kind, ADV.topicNames(b.topics), b.status, Number(b.fee).toFixed(2), b.paid ? 'yes' : 'no', b.paid_at ? fmt.key(b.paid_at) : '']; }))));
+
+  /* ---------------------------------------------------------------- learners */
+  ADV.views.learners = function () {
+    const q = (state.lq || '').toLowerCase(); const f = state.lFilter || 'all';
+    const all = (state.learners || []).filter((l) => l.role !== 'admin');
+    const shown = all.filter((l) => (f === 'all' || (f === 'waiting' && !l.approved && !l.blocked) || (f === 'approved' && l.approved && !l.blocked) || (f === 'blocked' && l.blocked)) && (!q || ((l.full_name || '') + ' ' + (l.email || '') + ' ' + (l.school || '') + ' ' + (l.phone || '')).toLowerCase().includes(q)));
+    const open = !!(state.settings.access && state.settings.access.open);
+    const seg = (k, l, n) => '<button class="' + (f === k ? 'on' : '') + '" data-action="l-filter" data-id="' + k + '">' + l + (n != null ? ' (' + n + ')' : '') + '</button>';
+    const card = (l) => {
+      const bs = state.bookings.filter((b) => b.learner_id === l.id); const lessons = bs.filter((b) => ['accepted', 'completed'].includes(b.status)).length; const owed = bs.filter((b) => ['accepted', 'completed'].includes(b.status) && !b.paid).reduce((n, b) => n + Number(b.fee), 0);
+      const prog = state.progOpen === l.id;
+      return '<div class="card" id="l-' + l.id + '"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="min-width:0"><div class="row" style="gap:6px"><h3>' + esc(l.full_name || '(no name)') + '</h3>' + (l.blocked ? pill('bad', 'Blocked') : l.approved ? pill('good', 'Notes unlocked') : pill('warn', 'Waiting for access')) + '</div>' +
+        '<p class="small muted" style="margin-top:4px">' + [l.email, l.phone, l.school, l.guardian_phone ? 'Parent ' + l.guardian_phone : ''].filter(Boolean).map(esc).join(' · ') + '</p><p class="small muted">Joined ' + esc(fmt.date(l.created_at)) + ' · ' + lessons + ' lesson' + (lessons === 1 ? '' : 's') + (owed ? ' · <b style="color:var(--warn)">owes ' + fmt.rand(owed) + '</b>' : '') + '</p></div>' +
+        '<div class="row">' + (l.approved ? '<button class="btn sm" data-action="l-set" data-id="' + l.id + '" data-k="approved" data-v="0">Lock the notes</button>' : '<button class="btn sm primary" data-action="l-set" data-id="' + l.id + '" data-k="approved" data-v="1">' + ICON.check + 'Unlock the notes</button>') + '</div></div>' +
+        '<div class="row" style="margin-top:10px"><button class="btn sm" data-action="msg-learner" data-id="' + l.id + '">' + ICON.chat + 'Message</button>' + (l.phone ? '<a class="btn sm" href="' + esc(ADV.wa(l.phone)) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + '<button class="btn sm" data-action="l-prog" data-id="' + l.id + '">' + ICON.chart + (prog ? 'Hide progress' : 'Progress') + '</button><button class="btn sm ghost" data-action="l-pass" data-id="' + l.id + '">Reset password</button><button class="btn sm ghost" data-action="l-set" data-id="' + l.id + '" data-k="blocked" data-v="' + (l.blocked ? '0' : '1') + '">' + (l.blocked ? 'Unblock' : 'Block') + '</button><button class="btn sm ghost" data-action="l-del" data-id="' + l.id + '">Delete</button></div>' +
+        (prog ? '<div style="margin-top:12px">' + (state.progData && state.progData.id === l.id ? (state.progData.data ? progSummary(state.progData.data) + ADV.progressTable(state.progData.data, false) : '<p class="small muted">No progress saved yet.</p>') : '<p class="small muted">Loading…</p>') + '</div>' : '') + '</div>';
+    };
+    return '<div class="stack"><div><span class="eyebrow">Learners</span><h1>Learners</h1><p class="small muted">' + (open ? 'Everyone with an account can read the notes (change this in Settings).' : 'Learners read the notes only after you unlock them. Everyone can book lessons.') + '</p></div>' +
+      '<div class="seg">' + seg('all', 'All', all.length) + seg('waiting', 'Waiting', all.filter((l) => !l.approved && !l.blocked).length) + seg('approved', 'Unlocked') + seg('blocked', 'Blocked') + '</div>' +
+      '<div class="card search"><input id="lq" type="search" placeholder="Search by name, e-mail, school or phone" value="' + esc(state.lq || '') + '" aria-label="Search learners"></div>' +
+      (shown.length ? shown.map(card).join('') : '<div class="card"><p class="muted">No learners here yet. Share your booking link from the Dashboard.</p></div>') + '</div>';
+  };
+  function progSummary(d) {
+    const loads = ADV.paperLoad(d);
+    return '<div class="grid cols-4" style="margin-bottom:10px">' + loads.map((L) => '<div class="cd"><span class="eyebrow">' + esc(SUBJ[L.e.subj].short + ' ' + L.e.paper.replace(/ \(.*\)/, '')) + '</span><div class="big" style="font-size:1.2rem">' + fmt.mins(L.left) + '</div><span class="small muted">left of ' + fmt.mins(L.total) + '</span></div>').join('') + '</div>';
+  }
+  ADV.actions['l-filter'] = (a) => { state.lFilter = a.dataset.id; ADV.render(); };
+  ADV.actions['l-set'] = async (a) => {
+    const id = a.dataset.id, k = a.dataset.k, v = a.dataset.v === '1';
+    if (k === 'blocked' && v && !confirm('Block this learner? They are signed out and cannot book or read the notes.')) return;
+    try { const r = await sb.update('profiles', { id: 'eq.' + id }, { [k]: v }); const i = state.learners.findIndex((x) => x.id === id); if (i >= 0 && r[0]) state.learners[i] = r[0]; toast(k === 'approved' ? (v ? 'Notes unlocked for this learner' : 'Notes locked') : v ? 'Learner blocked' : 'Learner unblocked'); ADV.render(); }
+    catch (e) { toast(ADV.errMsg(e)); }
+  };
+  ADV.actions['l-prog'] = async (a) => {
+    const id = a.dataset.id; if (state.progOpen === id) { state.progOpen = null; ADV.render(); return; }
+    state.progOpen = id; state.progData = null; ADV.render();
+    try { const r = await sb.select('progress', { user_id: 'eq.' + id }); const d = r[0] && r[0].data; if (d) ['topics', 'secs', 'quiz', 'practice', 'plan'].forEach((k) => { d[k] = d[k] || {}; }); state.progData = { id, data: d || null }; } catch (e) { state.progData = { id, data: null }; }
+    ADV.render();
+  };
+  ADV.actions['l-pass'] = async (a) => {
+    const pw = 'Adv-' + rid(6); if (!confirm('Set a new temporary password for this learner?\n\nNew password: ' + pw + '\n\nSend it to them on WhatsApp; they can change it under Account.')) return;
+    try { await sb.fn('admin-users', { action: 'reset_password', user_id: a.dataset.id, password: pw }); const l = state.learners.find((x) => x.id === a.dataset.id); ADV.copy(pw); if (l && l.phone && confirm('Password set and copied. Open WhatsApp to send it?')) window.open(ADV.wa(l.phone, 'Your new Adventuity portal password is: ' + pw + ' – sign in at ' + portalUrl() + ' and change it under Account.'), '_blank'); }
+    catch (e) { toast(ADV.errMsg(e)); }
+  };
+  ADV.actions['l-del'] = async (a) => {
+    const l = state.learners.find((x) => x.id === a.dataset.id); if (!confirm('Delete ' + (l.full_name || l.email) + '\'s account, bookings and messages? This cannot be undone.')) return;
+    try { await sb.fn('admin-users', { action: 'delete', user_id: l.id }); state.learners = state.learners.filter((x) => x.id !== l.id); await reload(); toast('Account deleted'); } catch (e) { toast(ADV.errMsg(e)); }
+  };
+
+  /* ---------------------------------------------------------------- group classes */
+  ADV.views.classes = function () {
+    const f = state.classForm; const cls = state.classes.slice().sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+    const seats = (c) => state.bookings.filter((b) => b.class_id === c.id);
+    const form = f ? '<form id="f-class" class="card stack"><h3>' + (f.id ? 'Edit class' : 'New group class') + '</h3><div class="grid cols-3">' +
+      '<div class="field"><label for="c-subj">Subject</label><select id="c-subj">' + Object.keys(SUBJ).map((k) => '<option value="' + k + '"' + (f.subject === k ? ' selected' : '') + '>' + SUBJ[k].short + '</option>').join('') + '</select></div>' +
+      '<div class="field" style="grid-column:span 2"><label for="c-title">Title</label><input id="c-title" required value="' + esc(f.title || '') + '" placeholder="e.g. Calculus crash course – cubic graphs and optimisation"></div>' +
+      '<div class="field"><label for="c-date">Date</label><input id="c-date" type="date" required value="' + esc(f.date || '') + '"></div><div class="field"><label for="c-time">Start time</label><input id="c-time" type="time" step="900" required value="' + esc(f.time || '16:00') + '"></div><div class="field"><label for="c-min">Minutes</label><input id="c-min" type="number" min="30" step="15" value="' + (f.minutes || 90) + '"></div>' +
+      '<div class="field"><label for="c-fee">Fee per learner (R)</label><input id="c-fee" type="number" min="0" step="10" value="' + (f.fee != null ? f.fee : (ADV.setting('fees', {}).group || 100)) + '"></div><div class="field"><label for="c-cap">Seats</label><input id="c-cap" type="number" min="1" value="' + (f.capacity || 20) + '"></div><label class="check" style="align-self:end"><input id="c-pub" type="checkbox"' + (f.published !== false ? ' checked' : '') + '> Learners can see and book it</label></div>' +
+      '<div class="field"><label for="c-notes">Notes for learners (optional)</label><input id="c-notes" value="' + esc(f.notes || '') + '" placeholder="e.g. Bring the Nov 2024 P1"></div>' +
+      '<div class="row"><button class="btn primary" type="submit">Save class</button><button class="btn" type="button" data-action="class-cancel">Cancel</button></div></form>' : '';
+    const card = (c) => {
+      const s = seats(c); const acc = s.filter((b) => b.status === 'accepted'), pend = s.filter((b) => b.status === 'pending'); const room = state.rooms[c.id] && state.rooms[c.id].room; const past = new Date(c.starts_at) < now() - c.minutes * 6e4;
+      return '<div class="card lesson' + (past ? ' past' : '') + '"><div class="date"><span>' + esc(fmt.wd(c.starts_at)) + '</span><b>' + esc(fmt.day(c.starts_at)) + '</b><span>' + esc(fmt.mon(c.starts_at)) + '</span></div><div style="min-width:0"><div class="row" style="gap:6px">' + pill(c.subject, SUBJ[c.subject].short) + pill('', fmt.rand(c.fee)) + pill(acc.length >= c.capacity ? 'bad' : 'good', acc.length + '/' + c.capacity + ' confirmed') + (pend.length ? pill('warn', pend.length + ' waiting') : '') + (c.published ? '' : pill('', 'Hidden')) + '</div>' +
+        '<h3 style="margin-top:6px">' + esc(c.title) + '</h3><p class="small muted">' + esc(fmt.long(c.starts_at)) + ' · ' + esc(fmt.time(c.starts_at)) + ' · ' + c.minutes + ' min' + (c.notes ? ' · ' + esc(c.notes) : '') + '</p>' +
+        (s.length ? '<p class="small" style="margin-top:4px">' + s.filter((b) => ['pending', 'accepted'].includes(b.status)).map((b) => esc(learnerOf(b).full_name || 'Learner') + (b.status === 'pending' ? ' (waiting)' : b.paid ? ' ✓paid' : '')).join(', ') + '</p>' : '') +
+        '<div class="row" style="margin-top:10px">' + (room && !past ? '<a class="btn primary sm" href="' + esc(ADV.roomUrl(room, tutorName())) + '" target="_blank" rel="noopener">' + ICON.video + 'Start class</a>' : '') + (pend.length ? '<button class="btn sm" data-action="class-accept-all" data-id="' + c.id + '">Accept all ' + pend.length + '</button>' : '') + '<button class="btn sm" data-action="class-edit" data-id="' + c.id + '">Edit</button><button class="btn sm ghost" data-action="class-del" data-id="' + c.id + '">Delete</button></div></div></div>';
+    };
+    return '<div class="stack"><div class="row" style="justify-content:space-between;align-items:flex-end"><div><span class="eyebrow">Group classes</span><h1>Group classes</h1><p class="small muted">Learners request a seat; you accept them here or on the Dashboard. Everyone accepted joins the same private room.</p></div>' + (f ? '' : '<button class="btn primary" data-action="class-new">' + ICON.plus + 'New class</button>') + '</div>' + form +
+      (cls.length ? cls.map(card).join('') : '<div class="card"><p class="muted">No classes yet.</p></div>') + '</div>';
+  };
+  ADV.actions['class-new'] = () => { state.classForm = { subject: 'maths', date: fmt.key(Date.now() + 2 * 864e5) }; ADV.render(); };
+  ADV.actions['class-cancel'] = () => { state.classForm = null; ADV.render(); };
+  ADV.actions['class-edit'] = (a) => { const c = state.classes.find((x) => x.id === a.dataset.id); state.classForm = Object.assign({}, c, { date: fmt.key(c.starts_at), time: fmt.time(c.starts_at) }); ADV.render(); window.scrollTo({ top: 0 }); };
+  ADV.actions['class-del'] = async (a) => { if (!confirm('Delete this class? Learners who booked it keep their booking record but lose the class link.')) return; try { await sb.remove('classes', { id: 'eq.' + a.dataset.id }); await reload(); toast('Class deleted'); } catch (e) { toast(ADV.errMsg(e)); } };
+  ADV.actions['class-accept-all'] = async (a) => {
+    const c = state.classes.find((x) => x.id === a.dataset.id); const room = (state.rooms[c.id] || {}).room;
+    const list = state.bookings.filter((b) => b.class_id === c.id && b.status === 'pending');
+    for (const b of list) { try { await sb.update('bookings', { id: 'eq.' + b.id }, { status: 'accepted', room }); ADV.notify(b.id, 'accepted'); } catch (e) { toast(ADV.errMsg(e)); } }
+    toast(list.length + ' learner' + (list.length === 1 ? '' : 's') + ' accepted'); await reload();
+  };
+  async function saveClass(e) {
+    e.preventDefault(); const f = state.classForm;
+    const row = { subject: $('#c-subj').value, title: $('#c-title').value.trim(), starts_at: ADV.sast($('#c-date').value, $('#c-time').value).toISOString(), minutes: Number($('#c-min').value) || 90, fee: Number($('#c-fee').value) || 0, capacity: Number($('#c-cap').value) || 20, notes: $('#c-notes').value.trim(), published: $('#c-pub').checked };
+    try {
+      if (f.id) { await sb.update('classes', { id: 'eq.' + f.id }, row); const moved = state.bookings.filter((b) => b.class_id === f.id && ['pending', 'accepted'].includes(b.status)); for (const b of moved) await sb.update('bookings', { id: 'eq.' + b.id }, { starts_at: row.starts_at, ends_at: new Date(+new Date(row.starts_at) + row.minutes * 6e4).toISOString(), subject: row.subject }); }
+      else await sb.insert('classes', [row]);
+      state.classForm = null; await loadClassRooms(); await reload(); toast('Class saved');
+    } catch (err) { toast(ADV.errMsg(err)); }
+  }
+
+  /* ---------------------------------------------------------------- money */
+  ADV.views.money = function () {
+    const fees = ADV.setting('fees', { maths: 250, phys: 250, chem: 250, group: 100 }); const pay = state.priv.payment || {};
+    const billable = state.bookings.filter((b) => ['accepted', 'completed'].includes(b.status)).sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at));
+    const mk = monthKey(now()); const sum = (arr) => arr.reduce((n, b) => n + Number(b.fee), 0);
+    const got = sum(billable.filter((b) => b.paid && monthKey(b.paid_at || b.starts_at) === mk)), all = sum(billable.filter((b) => b.paid)), owed = sum(billable.filter((b) => !b.paid && new Date(b.starts_at) < now())), coming = sum(billable.filter((b) => !b.paid && new Date(b.starts_at) >= now()));
+    const fee = (id, label, v) => '<div class="field"><label for="' + id + '">' + label + '</label><div class="rand"><span>R</span><input id="' + id + '" type="number" min="0" step="10" value="' + (v != null ? v : '') + '"></div></div>';
+    return '<div class="stack"><div><span class="eyebrow">Money</span><h1>Fees and payments</h1></div>' +
+      '<div class="grid cols-4"><div class="cd"><span class="eyebrow">Received this month</span><div class="big" style="font-size:1.35rem">' + fmt.rand(got) + '</div></div><div class="cd"><span class="eyebrow">Received in total</span><div class="big" style="font-size:1.35rem">' + fmt.rand(all) + '</div></div><div class="cd"><span class="eyebrow">Owed (lessons done)</span><div class="big" style="font-size:1.35rem;color:var(--warn)">' + fmt.rand(owed) + '</div></div><div class="cd"><span class="eyebrow">Booked, not yet due</span><div class="big" style="font-size:1.35rem">' + fmt.rand(coming) + '</div></div></div>' +
+      '<form id="f-fees" class="card stack"><div><h3>Your fees</h3><p class="small muted">Per hour for one-on-one lessons. Learners see the price before they request a lesson; the server works out the fee, so nobody can change it. You can still adjust a single booking when you accept it.</p></div><div class="grid cols-4">' + fee('fee-maths', 'Mathematics', fees.maths) + fee('fee-phys', 'Physics', fees.phys) + fee('fee-chem', 'Chemistry', fees.chem) + fee('fee-group', 'Group class (default per seat)', fees.group) + '</div><div class="row"><button class="btn primary" type="submit">Save fees</button></div></form>' +
+      '<form id="f-pay" class="card stack"><div><h3>How learners pay you</h3><p class="small muted">Shown only to learners after you accept their lesson, with their booking reference. Learners then upload a proof of payment, and you get a notification.</p></div><div class="field"><label for="pay-text">Payment instructions</label><textarea id="pay-text" placeholder="Bank: …&#10;Account name: …&#10;Account number: …&#10;Branch code: …&#10;Use your booking reference.">' + esc(pay.text || '') + '</textarea></div><div class="field"><label for="pay-link">Online payment link (optional – e.g. a SnapScan, Zapper, PayFast or Yoco link)</label><input id="pay-link" type="url" value="' + esc(pay.link || '') + '" placeholder="https://"></div><div class="row"><button class="btn primary" type="submit">Save payment details</button></div></form>' +
+      '<div class="card"><div class="row" style="justify-content:space-between"><h3>Lessons and payments</h3><button class="btn sm" data-action="csv-pay">Download CSV</button></div><div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Date</th><th>Learner</th><th>Lesson</th><th style="text-align:right">Fee</th><th>Status</th><th></th></tr></thead><tbody>' +
+      (billable.length ? billable.map((b) => '<tr><td class="mono">' + esc(fmt.key(b.starts_at)) + '</td><td>' + esc(learnerOf(b).full_name || '') + '</td><td>' + esc(SUBJ[b.subject].short) + (b.class_id ? ' (class)' : '') + ' <span class="mono small muted">' + esc(b.ref) + '</span></td><td class="mono" style="text-align:right">' + fmt.rand(b.fee) + '</td><td>' + (b.paid ? pill('good', 'Paid' + (b.paid_at ? ' ' + fmt.date(b.paid_at) : '')) : b.pop_path ? pill('accent', 'Proof sent') : pill('warn', 'Unpaid')) + '</td><td><div class="row" style="gap:4px;flex-wrap:nowrap">' + (b.pop_path ? '<button class="chipbtn" data-action="pop-view" data-id="' + b.id + '">Proof</button>' : '') + '<button class="chipbtn" data-action="b-paid" data-id="' + b.id + '">' + (b.paid ? 'Mark unpaid' : 'Mark paid') + '</button></div></td></tr>').join('') : '<tr><td colspan="6" class="muted">No accepted lessons yet.</td></tr>') + '</tbody></table></div></div></div>';
+  };
+  ADV.actions['csv-pay'] = () => download('adventuity-payments-' + fmt.key(now()) + '.csv', csv([['Date', 'Reference', 'Learner', 'Subject', 'Fee (R)', 'Paid', 'Paid on']].concat(state.bookings.filter((b) => ['accepted', 'completed'].includes(b.status)).map((b) => [fmt.key(b.starts_at), b.ref, learnerOf(b).full_name, SUBJ[b.subject].short, Number(b.fee).toFixed(2), b.paid ? 'yes' : 'no', b.paid_at ? fmt.key(b.paid_at) : '']))));
+
+  /* ---------------------------------------------------------------- settings */
+  async function savePublic(key, value) { await sb.upsert('public_settings', [{ key, value, updated_at: new Date().toISOString() }], 'key'); state.settings[key] = value; }
+  async function savePrivate(key, value) { await sb.upsert('private_settings', [{ key, value, updated_at: new Date().toISOString() }], 'key'); state.priv[key] = value; }
+  ADV.views.settings = function () {
+    const site = ADV.setting('site', {}); const bk = Object.assign({ slotMinutes: 30, durations: [60, 90, 120], daysAhead: 21, minNoticeHours: 3, blocked: [] }, ADV.setting('booking', {}));
+    const av = ADV.setting('availability', 'Mon-Fri 16:00-20:00; Sat 09:00-13:00'); const open = !!(state.settings.access && state.settings.access.open);
+    const notify = state.priv.notify || {}; const meet = state.priv.meeting || {}; const cls = state.priv.class || {};
+    const inp = (id, label, val, ph, type, help) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val == null ? '' : val) + '" placeholder="' + esc(ph || '') + '">' + (help ? '<span class="small muted">' + help + '</span>' : '') + '</div>';
+    const parsed = ADV.parseAvailability(av); const DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const avPreview = [1, 2, 3, 4, 5, 6, 0].map((d) => '<span class="pill ' + (parsed[d] ? 'good' : '') + '">' + DN[d] + ' ' + (parsed[d] ? parsed[d].map(([a, b]) => String(Math.floor(a / 60)).padStart(2, '0') + ':' + String(a % 60).padStart(2, '0') + '–' + String(Math.floor(b / 60)).padStart(2, '0') + ':' + String(b % 60).padStart(2, '0')).join(', ') : 'closed') + '</span>').join(' ');
+    return '<div class="stack"><div><span class="eyebrow">Settings</span><h1>Settings</h1><p class="small muted">Changes apply immediately for everyone – no files to edit.</p></div>' +
+      '<form id="f-avail" class="card stack"><div><h3>When learners can book</h3><p class="small muted">Write your teaching hours like <span class="mono">Mon-Fri 16:00-20:00; Sat 09:00-13:00</span>. Times already booked are hidden from other learners automatically.</p></div>' +
+      inp('s-avail', 'Teaching hours', av, 'Mon-Fri 16:00-20:00; Sat 09:00-13:00') + '<div class="row" style="gap:6px">' + avPreview + '</div>' +
+      '<div class="grid cols-4"><div class="field"><label for="s-step">Start times every</label><select id="s-step">' + [15, 30, 60].map((m) => '<option value="' + m + '"' + (Number(bk.slotMinutes) === m ? ' selected' : '') + '>' + m + ' minutes</option>').join('') + '</select></div>' + inp('s-ahead', 'Book up to (days ahead)', bk.daysAhead, '', 'number') + inp('s-notice', 'Minimum notice (hours)', bk.minNoticeHours, '', 'number') +
+      '<div class="field"><label>Lesson lengths offered</label><div class="row" style="gap:10px">' + [30, 45, 60, 90, 120].map((m) => '<label class="check"><input type="checkbox" name="s-dur" value="' + m + '"' + (bk.durations.includes(m) ? ' checked' : '') + '> ' + fmt.mins(m) + '</label>').join('') + '</div></div></div>' +
+      '<div class="field"><label for="s-block">Days off (no bookings)</label><div class="row"><input id="s-block" type="date" style="max-width:200px"><button class="btn sm" type="button" data-action="block-add">Add day off</button></div><div class="row" style="gap:6px;margin-top:6px">' + (bk.blocked || []).filter((d) => d >= fmt.key(now())).map((d) => '<button type="button" class="chipbtn" data-action="block-del" data-id="' + d + '">' + esc(fmt.date(d + 'T12:00:00+02:00')) + ' ✕</button>').join('') + '</div></div>' +
+      '<div class="row"><button class="btn primary" type="submit">Save booking settings</button></div></form>' +
+      '<form id="f-access" class="card stack"><div><h3>Who can read the study notes</h3><p class="small muted">The notes are encrypted; only these learners get the key. Booking is always open to everyone with an account.</p></div><label class="check"><input type="radio" name="s-open" value="0"' + (open ? '' : ' checked') + '> Only learners I unlock (recommended – unlock them under Learners)</label><label class="check"><input type="radio" name="s-open" value="1"' + (open ? ' checked' : '') + '> Everyone who creates an account</label><div class="row"><button class="btn primary" type="submit">Save</button></div></form>' +
+      '<form id="f-notify" class="card stack"><div><h3>Notifications to you</h3><p class="small muted">You get a notification on every device where you tap “Turn on” (Dashboard or Account), and an e-mail for every new request and message. The very first e-mail asks you to confirm the address once (sent by FormSubmit) – click the link in it.</p></div>' + inp('s-email', 'E-mail for alerts', notify.email || state.profile.email, 'you@example.com', 'email') + '<div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-action="mail-test">Send a test e-mail</button></div></form>' +
+      '<form id="f-meet" class="card stack"><div><h3>Online classroom</h3><p class="small muted">By default every accepted lesson gets its own private room (video, screen share, whiteboard and chat) that opens in a new window – no account needed for learners. The first time you start a lesson, the room asks you to sign in once with Google so you are the host; learners wait in the lobby until you arrive.</p></div>' + inp('s-meet', 'Use my own meeting link instead (optional – e.g. a Microsoft Teams or Google Meet link)', meet.link, 'https://teams.microsoft.com/…', 'url', 'Leave empty for a new private room per lesson.') + inp('s-drive', 'Class folder for learners (optional – e.g. a Google Drive folder link)', cls.drive, 'https://drive.google.com/…', 'url', 'Shown under Papers to signed-in learners.') + '<div class="row"><button class="btn primary" type="submit">Save</button></div></form>' +
+      '<form id="f-site" class="card stack"><div><h3>Your business details</h3></div><div class="grid cols-2">' + inp('s-brand', 'Business name', site.brand || 'Adventuity') + inp('s-tutor', 'Your name (shown in lessons)', site.tutorName || state.profile.full_name) + inp('s-tag', 'Tagline', site.tagline || 'Grade 12 Maths & Physical Sciences') + inp('s-wa', 'WhatsApp number (shown to learners)', site.whatsapp, '082 123 4567', 'tel') + '</div><div class="field"><label for="s-notice">Notice on every learner\'s home page (optional)</label><textarea id="s-notice" placeholder="e.g. No lessons on 24 September. Group class on calculus this Saturday!">' + esc(site.notice || '') + '</textarea></div><div class="row"><button class="btn primary" type="submit">Save</button></div></form>' +
+      shareCard() + '</div>';
+  };
+  ADV.actions['block-add'] = async () => { const d = $('#s-block').value; if (!d) return toast('Choose a date'); const bk = Object.assign({}, ADV.setting('booking', {})); bk.blocked = Array.from(new Set((bk.blocked || []).concat(d))).sort(); try { await savePublic('booking', bk); toast('Day off added'); ADV.render(); } catch (e) { toast(ADV.errMsg(e)); } };
+  ADV.actions['block-del'] = async (a) => { const bk = Object.assign({}, ADV.setting('booking', {})); bk.blocked = (bk.blocked || []).filter((d) => d !== a.dataset.id); try { await savePublic('booking', bk); ADV.render(); } catch (e) { toast(ADV.errMsg(e)); } };
+  ADV.actions['mail-test'] = async () => { const to = $('#s-email').value.trim(); if (!to) return; await savePrivate('notify', { email: to }); await ADV.emailTutor('Test from your Adventuity portal', { Message: 'E-mail alerts are working. New booking requests and messages arrive like this.', Portal: portalUrl() }); toast('Sent – check ' + to + ' (and spam). Confirm the first FormSubmit e-mail.', 6000); };
+
+  const prevSubmit = ADV.onSubmit;
+  ADV.onSubmit = async function (e) {
+    if (prevSubmit) prevSubmit(e);
+    const id = e.target.id; if (!['f-class', 'f-fees', 'f-pay', 'f-avail', 'f-access', 'f-notify', 'f-meet', 'f-site'].includes(id)) return;
+    if (id === 'f-class') return saveClass(e);
+    e.preventDefault(); const btn = e.target.querySelector('[type=submit]'); if (btn) btn.disabled = true;
+    try {
+      if (id === 'f-fees') { const n = (x) => Math.max(0, Number($(x).value) || 0); await savePublic('fees', { maths: n('#fee-maths'), phys: n('#fee-phys'), chem: n('#fee-chem'), group: n('#fee-group') }); }
+      if (id === 'f-pay') await savePrivate('payment', { text: $('#pay-text').value.trim(), link: $('#pay-link').value.trim() });
+      if (id === 'f-avail') {
+        const av = $('#s-avail').value.trim(); if (!Object.keys(ADV.parseAvailability(av)).length) throw new Error('Write the hours like: Mon-Fri 16:00-20:00; Sat 09:00-13:00');
+        const durs = $$('input[name="s-dur"]:checked').map((x) => Number(x.value)); if (!durs.length) throw new Error('Choose at least one lesson length');
+        await savePublic('availability', av); await savePublic('booking', Object.assign({}, ADV.setting('booking', {}), { slotMinutes: Number($('#s-step').value), daysAhead: Math.min(120, Math.max(1, Number($('#s-ahead').value) || 21)), minNoticeHours: Math.max(1, Number($('#s-notice').value) || 3), durations: durs }));
+      }
+      if (id === 'f-access') await savePublic('access', { open: ($$('input[name="s-open"]:checked')[0] || {}).value === '1' });
+      if (id === 'f-notify') await savePrivate('notify', { email: $('#s-email').value.trim() });
+      if (id === 'f-meet') { await savePrivate('meeting', { link: $('#s-meet').value.trim() }); await savePrivate('class', { drive: $('#s-drive').value.trim() }); }
+      if (id === 'f-site') await savePublic('site', Object.assign({}, ADV.setting('site', {}), { brand: $('#s-brand').value.trim() || 'Adventuity', tutorName: $('#s-tutor').value.trim(), tagline: $('#s-tag').value.trim(), whatsapp: $('#s-wa').value.trim(), notice: $('#s-notice').value.trim() }));
+      toast('Saved'); ADV.render();
+    } catch (err) { toast(ADV.errMsg(err), 5000); if (btn) btn.disabled = false; }
+  };
+  const prevInput = ADV.onInput;
+  ADV.onInput = function (e) {
+    if (prevInput) prevInput(e);
+    if (e.target.id === 'bq' || e.target.id === 'lq') { state[e.target.id] = e.target.value; const pos = e.target.selectionStart; ADV.render(); const el = $('#' + e.target.id); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (x) { /* ignore */ } } }
+  };
+})();

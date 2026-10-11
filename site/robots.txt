@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://katiso0623.github.io/adventuity-hub/sitemap.xml
