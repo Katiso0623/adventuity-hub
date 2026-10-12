@@ -162,6 +162,10 @@ if 'source=pwa' not in idx: open(os.path.join(OUT, 'index.html'), 'w', encoding=
 seo = cfg.get('seo', {})
 if seo.get('indexNowKey'):
     wr(seo['indexNowKey'] + '.txt', seo['indexNowKey'])
+if seo.get('googleVerificationFile'):   # Search Console "HTML file" method: google<token>.html in the site root
+    gfile = seo['googleVerificationFile'].strip()
+    assert re.fullmatch(r'google[0-9a-f]{8,40}\.html', gfile), gfile
+    wr(gfile, 'google-site-verification: ' + gfile)
 tags = ''.join('<meta name="%s" content="%s">' % (n, seo[k]) for n, k in (('google-site-verification', 'googleSiteVerification'), ('msvalidate.01', 'bingSiteVerification')) if seo.get(k))
 if tags:
     idx = open(os.path.join(OUT, 'index.html'), encoding='utf-8').read()
