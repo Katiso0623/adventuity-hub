@@ -1283,7 +1283,7 @@
       for (const r of demoR.maps[100].rings) for (const p of r) { e0 = Math.min(e0, p[0]); e1 = Math.max(e1, p[0]); n0 = Math.min(n0, p[1]); n1 = Math.max(n1, p[1]); }
       mv.fit(e0 - 140, e1 + 140, n0 - 100, n1 + 100, 0.02);
       $('#hb-q100').textContent = n(demoR.hydro.design[100], 1) + ' m³/s';
-      $('#hb-a').textContent = n(demoR.catchment.areaKm2, 1) + ' km²'; $('#hb-xs').textContent = demoR.geometry.xs.length + ' cross-sections';
+      $('#hb-a').textContent = n(demoR.catchment.areaKm2, 1) + ' km²';
       window.FL_HERO_STATS = { q100: demoR.hydro.design[100], areaKm2: demoR.catchment.areaKm2, xs: demoR.geometry.xs.length, structures: demoR.structures.length };
       thumbs();
     } catch (e) { console.error(e); }
@@ -1292,11 +1292,11 @@
   async function heroStatic(box) {
     const v = '?v=' + (window.FL_BUILD || '1');
     const img = new Image(); img.alt = ''; img.className = 'hero-img'; img.src = 'assets/hero.jpg' + v; img.decoding = 'async'; box.insertBefore(img, box.firstChild);
-    for (const [id, f, a] of [['th-plan', 'sample/thumb-plan.jpg', 'Sample flood line plan drawing'], ['th-sect', 'sample/thumb-section.jpg', 'Sample longitudinal and cross-section drawing']]) { const el = $('#' + id); if (el) el.innerHTML = `<a href="sample/sheet${id === 'th-plan' ? 1 : 2}.svg${v}" target="_blank" rel="noopener"><img src="${f}${v}" alt="${a}" loading="lazy" decoding="async"></a>`; }
+    for (const [id, f, a] of [['th-plan', 'sample/thumb-plan.jpg', 'Sample flood line plan drawing'], ['th-sect', 'sample/thumb-section.jpg', 'Sample longitudinal and cross-section drawing']]) { const el = $('#' + id); if (el) el.innerHTML = `<img src="${f}${v}" alt="${a}" loading="lazy" decoding="async">`; }
     try {
       const st = await (await fetch('sample/stats.json' + v, { cache: 'no-cache' })).json();
       $('#hb-q100').textContent = n(st.q100, 1) + ' m³/s'; $('#hb-a').textContent = n(st.areaKm2, 1) + ' km²';
-      $('#hb-xs').textContent = st.xs + ' cross-sections' + (st.structures ? ', a road bridge, a culvert' : '');
+      if (!st.structures) $('#hb-xs').textContent = 'the river';
     } catch (e) { $('#hb-q100').textContent = '—'; $('#hb-a').textContent = '—'; }
   }
   function thumbs() {
@@ -1328,7 +1328,7 @@
       const lv = { high: ['High', 'The site is low-lying ground next to a watercourse. A flood line will almost certainly be required before development.'], moderate: ['Moderate', 'A watercourse is close to the site. Most municipalities require a flood line for development near a watercourse.'], low: ['Low', 'No significant watercourse was found close to the site. A flood line may still be required by your municipality or for other water courses not visible in satellite terrain.'] }[r.level];
       out.innerHTML = `<div class="result"><div class="level ${r.level}"><i></i>Flood risk indication: ${lv[0]}${useDemo ? ' (demo site)' : ''}</div><p>${lv[1]}</p>
         <div class="kv"><span>Nearest watercourse</span><b>${r.stream ? n(r.stream.dist, 0) + ' m' : 'none within 2.5 km'}</b><span>Catchment draining past that point</span><b>${r.stream ? n(r.stream.areaKm2, 1) + ' km²' : '—'}</b><span>Site height above the watercourse</span><b>${r.siteHAND === r.siteHAND ? n(r.siteHAND, 1) + ' m' : '—'}</b></div>
-        <p class="note">Indicative screening from ~30 m satellite terrain (height above nearest drainage). It is not a flood line and cannot be used for approvals.</p>
+        <p class="note">A quick indication only. It is not a flood line and cannot be used for approvals.</p>
         <div><a class="btn red" href="#quote" id="chk-quote">Request a certified flood line</a></div></div>`;
       $('#chk-quote').addEventListener('click', () => {
         if (!useDemo) { $('#q-coord').value = site.lat.toFixed(6) + ', ' + site.lon.toFixed(6); }
