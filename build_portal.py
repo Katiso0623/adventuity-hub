@@ -172,6 +172,9 @@ if tags:
     open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8').write(idx.replace('</head>', tags + '\n</head>', 1))
 og = os.path.join(D, 'brand', 'og.png')
 if os.path.exists(og): shutil.copy(og, os.path.join(OUT, 'og.png'))
+# ---- Adventuity Floodline website (built separately by the Floodline project; only its deploy files live in floodline/)
+fl = os.path.join(D, 'floodline')
+if os.path.isdir(fl): shutil.copytree(fl, os.path.join(OUT, 'floodline'))
 
 # ---- safety: no plain study text in the deploy
 plain = [p for p in ['maths_a.js', 'physics.js', 'practice_chem.js'] if os.path.exists(os.path.join(OUT, p))]
