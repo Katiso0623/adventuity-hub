@@ -22,5 +22,7 @@ window.FL_CONFIG = {
   report: { preparedBy: 'J.K. Mokoena', initials: 'JKM', engineer: '', ecsa: '', drawingPrefix: 'ADV-FL', reportPrefix: 'ADV-FL' },
   // Optional light gate for the Studio page: SHA-256 hex of a passcode. Leave empty for no gate.
   // The Studio is shipped encrypted; the key is released only to signed-in administrators (Supabase row-level security).
-  studio: { bundle: 'js/studio.bundle.enc?v=20261012225043', passcodeSha256: '' },
+  // Satellite imagery for the map and the plan drawing (Esri World Imagery). Add an ArcGIS Location Platform key for commercial use.
+  imagery: { esriKey: '' },
+  studio: { bundle: 'js/studio.bundle.enc?v=20261012230803', passcodeSha256: '' },
 };

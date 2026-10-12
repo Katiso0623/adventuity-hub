@@ -987,14 +987,15 @@
     _imagery(ctx) {
       const cm = this.cmNow(); if (cm == null) return;
       const geo = FL.geo, [cE, cN] = [this.view.cx, this.view.cy], ll = geo.fromLoEN(cE, cN, cm);
-      const z = Math.max(3, Math.min(19, Math.round(Math.log2(156543.03 * Math.cos(ll.lat * Math.PI / 180) / this.view.scale))));
+      const maxZ = this.opts.imageryMaxZoom || 19, dz = this.dpr >= 1.5 ? 1 : 0;
+      const z = Math.max(3, Math.min(maxZ, Math.round(Math.log2(156543.03 * Math.cos(ll.lat * Math.PI / 180) / this.view.scale)) + dz));
       const c0 = geo.fromLoEN(...this.toWorld(0, 0), cm), c1 = geo.fromLoEN(...this.toWorld(this.w, this.h), cm);
       const tx0 = Math.floor(geo.lonToPx(Math.min(c0.lon, c1.lon), z) / 256), tx1 = Math.floor(geo.lonToPx(Math.max(c0.lon, c1.lon), z) / 256);
       const ty0 = Math.floor(geo.latToPx(Math.max(c0.lat, c1.lat), z) / 256), ty1 = Math.floor(geo.latToPx(Math.min(c0.lat, c1.lat), z) / 256);
-      if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 80) return;
+      if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 140) return;
       for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
         const key = z + '/' + tx + '/' + ty; let im = this.tiles.get(key);
-        if (!im) { im = new Image(); im.onload = () => this.render(); im.onerror = () => { im.failed = true; }; im.src = (this.opts.imageryUrl || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').replace('{z}', z).replace('{x}', tx).replace('{y}', ty); this.tiles.set(key, im); }
+        if (!im) { im = new Image(); im.onload = () => this.render(); im.onerror = () => { im.failed = true; }; im.src = (this.opts.imageryUrl || (FL.imagery ? FL.imagery.source().url : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')).replace('{z}', z).replace('{x}', tx).replace('{y}', ty); this.tiles.set(key, im); }
         if (!im.complete || im.failed || !im.naturalWidth) continue;
         const corner = (px, py) => { const p = geo.toLoEN(geo.pxToLat(py, z), geo.pxToLon(px, z), cm); return this.toScreen(p.E, p.N); };
         const p0 = corner(tx * 256, ty * 256), p1 = corner(tx * 256 + 256, ty * 256), p2 = corner(tx * 256, ty * 256 + 256);
@@ -1020,8 +1021,8 @@
         if (L.contours) {
           const fineOn = s < 4 && this.cache.ctFine, ct = fineOn ? this.cache.ctFine : this.cache.ctCoarse;
           if (ct && s < (fineOn ? 4 : 40)) {
-            ctx.lineWidth = 0.6; ctx.strokeStyle = PAL.contour; for (const c of ct.minor) { this._path(ctx, c.pts, c.closed); ctx.stroke(); }
-            ctx.lineWidth = 1.0; ctx.strokeStyle = PAL.contourMajor; for (const c of ct.major) { this._path(ctx, c.pts, c.closed); ctx.stroke(); }
+            ctx.lineWidth = 0.6; ctx.strokeStyle = L.imagery ? 'rgba(255,244,214,0.38)' : PAL.contour; for (const c of ct.minor) { this._path(ctx, c.pts, c.closed); ctx.stroke(); }
+            ctx.lineWidth = 1.0; ctx.strokeStyle = L.imagery ? 'rgba(255,244,214,0.75)' : PAL.contourMajor; for (const c of ct.major) { this._path(ctx, c.pts, c.closed); ctx.stroke(); }
             if (s < (fineOn ? 2.2 : 18)) { ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace'; ctx.fillStyle = 'rgba(80,70,55,0.9)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
               for (const lb of ct.labels) { const [x, y] = this.toScreen(lb.at[0], lb.at[1]); if (x < 0 || y < 0 || x > this.w || y > this.h) continue; const [x2, y2] = this.toScreen(lb.dir[0], lb.dir[1]); let a = Math.atan2(y2 - y, x2 - x); if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI; ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.fillStyle = PAL.paper; ctx.fillRect(-14, -6, 28, 12); ctx.fillStyle = 'rgba(80,70,55,0.95)'; ctx.fillText(String(lb.z), 0, 0); ctx.restore(); } }
           }
