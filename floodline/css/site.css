@@ -144,3 +144,10 @@ footer.foot a { color: #fff; }
 .reveal ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
 .reveal li { position: relative; padding-left: 26px; color: #dce7f1; } .reveal li::before { content: ''; position: absolute; left: 0; top: .72em; width: 15px; height: 2.5px; background: var(--flood); }
 .thumb img { object-fit: cover; }
+
+/* free check: place search results */
+.places { display: grid; gap: 0; margin-top: 10px; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--sheet); }
+.places .hint, .places .note { padding: 8px 12px; margin: 0; }
+.places button { text-align: left; border: 0; border-top: 1px solid var(--rule); background: var(--sheet); color: var(--ink); padding: 10px 12px; cursor: pointer; display: grid; gap: 2px; font: 16px var(--f-body); }
+.places button:hover, .places button:focus-visible { background: var(--chip); }
+.places button span { font-size: 14px; color: var(--muted); }

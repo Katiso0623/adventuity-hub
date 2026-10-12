@@ -944,6 +944,7 @@
       this.canvas.width = this.w * dpr; this.canvas.height = this.h * dpr; this.canvas.style.width = this.w + 'px'; this.canvas.style.height = this.h + 'px';
       this.render();
     }
+    cmNow() { return this.data ? this.data.cm : this.opts.cm; }
     toScreen(E, N) { return [(E - this.view.cx) / this.view.scale + this.w / 2, (this.view.cy - N) / this.view.scale + this.h / 2]; }
     toWorld(x, y) { return [this.view.cx + (x - this.w / 2) * this.view.scale, this.view.cy - (y - this.h / 2) * this.view.scale]; }
     fit(e0, e1, n0, n1, pad) {
@@ -984,7 +985,7 @@
     _rasterTo(ctx, cv, e0, n0, dx, nx, ny) { const [x, y] = this.toScreen(e0 - dx / 2, n0 + dx / 2); ctx.drawImage(cv, x, y, nx * dx / this.view.scale, ny * dx / this.view.scale); }
     _path(ctx, pts, closed) { if (!pts || pts.length < 2) return; ctx.beginPath(); let p = this.toScreen(pts[0][0], pts[0][1]); ctx.moveTo(p[0], p[1]); for (let i = 1; i < pts.length; i++) { p = this.toScreen(pts[i][0], pts[i][1]); ctx.lineTo(p[0], p[1]); } if (closed) ctx.closePath(); }
     _imagery(ctx) {
-      const R = this.data, cm = R ? R.cm : this.opts.cm; if (cm == null) return;
+      const cm = this.cmNow(); if (cm == null) return;
       const geo = FL.geo, [cE, cN] = [this.view.cx, this.view.cy], ll = geo.fromLoEN(cE, cN, cm);
       const z = Math.max(3, Math.min(19, Math.round(Math.log2(156543.03 * Math.cos(ll.lat * Math.PI / 180) / this.view.scale))));
       const c0 = geo.fromLoEN(...this.toWorld(0, 0), cm), c1 = geo.fromLoEN(...this.toWorld(this.w, this.h), cm);
@@ -1070,11 +1071,13 @@
           }
         }
       }
+      if (this.overlays) for (const o of this.overlays) { try { o(ctx, this); } catch (e) {   } }
       const mark = (p, col, label) => { if (!p) return; const [x, y] = this.toScreen(p.E, p.N); ctx.fillStyle = col; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 6.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); if (label) { ctx.font = '700 12px "Barlow Condensed", "Arial Narrow", sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.strokeText(label, x + 10, y); ctx.fillStyle = col; ctx.fillText(label, x + 10, y); } };
       if (this.layers.site) { mark(this.site || (R && R.site), PAL.site, this.siteLabel || 'SITE'); if (this.river) mark(this.river, PAL.river, 'RIVER POINT'); }
       this._scaleBar(ctx); this._north(ctx);
-      if (!R && this.emptyText) { ctx.fillStyle = 'rgba(28,50,70,0.75)'; ctx.font = '600 15px "Source Sans 3", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.emptyText, this.w / 2, this.h / 2); }
+      if (!R && this.emptyText && !L.imagery) { ctx.fillStyle = 'rgba(28,50,70,0.75)'; ctx.font = '600 15px "Source Sans 3", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.emptyText, this.w / 2, this.h / 2); }
       if (this.dynT != null && this.layers.dyn) { ctx.fillStyle = 'rgba(28,50,70,0.85)'; ctx.fillRect(12, 12, 150, 26); ctx.fillStyle = '#fff'; ctx.font = '600 13px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('t = ' + (this.dynT / 3600).toFixed(2) + ' h', 22, 25); }
+      if (this.opts.onView) this.opts.onView();
     }
     _scaleBar(ctx) {
       const target = this.w * 0.18 * this.view.scale; const pow = Math.pow(10, Math.floor(Math.log10(target))); let L = pow; for (const m of [1, 2, 5, 10]) if (m * pow <= target) L = m * pow;
@@ -1091,6 +1094,25 @@
     snapshot() { return this.canvas.toDataURL('image/png'); }
   }
   FL.MapView = MapView; FL.mapfx = { hillshadeCanvas, depthCanvas, contours, PAL };
+})(typeof window !== 'undefined' ? window : globalThis);
+(function (root) {
+  'use strict';
+  const FL = root.FL = root.FL || {};
+  const URL_ = 'https://nominatim.openstreetmap.org/search';
+  function timeout(ms) { return new Promise((_, rj) => setTimeout(() => rj(new Error('The search took too long. Try again.')), ms)); }
+  async function search(q, opts) {
+    q = String(q || '').trim(); if (q.length < 2) return [];
+    const p = new URLSearchParams({ q, format: 'jsonv2', countrycodes: (opts && opts.countries) || 'za', limit: String((opts && opts.limit) || 8), addressdetails: '0', 'accept-language': 'en' });
+    const r = await Promise.race([fetch(URL_ + '?' + p.toString(), { headers: { Accept: 'application/json' } }), timeout(12000)]);
+    if (!r.ok) throw new Error('Place search is not available right now (' + r.status + ').');
+    const j = await r.json();
+    return (Array.isArray(j) ? j : []).map(x => {
+      const parts = String(x.display_name || '').split(',').map(s => s.trim()).filter(Boolean);
+      const bb = Array.isArray(x.boundingbox) && x.boundingbox.length === 4 ? x.boundingbox.map(Number) : null;
+      return { name: parts[0] || q, detail: parts.slice(1, 4).join(', '), lat: +x.lat, lon: +x.lon, bbox: bb, kind: String(x.type || x.category || '').replace(/_/g, ' ') };
+    }).filter(x => x.lat === x.lat && x.lon === x.lon);
+  }
+  FL.places = { search };
 })(typeof window !== 'undefined' ? window : globalThis);
 (function () {
   'use strict';
@@ -1145,7 +1167,8 @@
     if (useDemo) { prov = FL.demo.provider; const s = prov.site(); site = { E: s.E, N: s.N, lat: s.lat, lon: s.lon }; }
     else {
       const p = FL.geo.parseLatLon($('#chk-coord').value);
-      if (!p) { out.innerHTML = '<p class="note err">Enter coordinates such as -26.10512, 28.05741 (or 26°06\'18"S 28°03\'27"E).</p>'; return; }
+      if (!p) { findPlace($('#chk-coord').value); return; }
+      $('#chk-places').hidden = true;
       if (liveOK === false) { out.innerHTML = `<p class="note err">${ARTIFACT ? 'This preview cannot download map data. The check works on the published website.' : 'Terrain data could not be downloaded right now. Please try again shortly, or request a quote below.'}</p><button class="btn" type="button" id="chk-demo2">Try it on the demonstration site</button>`; $('#chk-demo2').addEventListener('click', () => runCheck(true)); return; }
       prov = FL.dem.liveProvider(FL.geo.loCM(p.lon)); site = p;
     }
@@ -1159,7 +1182,7 @@
         <p class="note">A quick indication only. It is not a flood line and cannot be used for approvals.</p>
         <div><a class="btn red" href="#quote" id="chk-quote">Request a certified flood line</a></div></div>`;
       $('#chk-quote').addEventListener('click', () => {
-        if (!useDemo) { $('#q-coord').value = site.lat.toFixed(6) + ', ' + site.lon.toFixed(6); }
+        if (!useDemo) { $('#q-coord').value = site.lat.toFixed(6) + ', ' + site.lon.toFixed(6); if (lastPlace && $('#q-address') && !$('#q-address').value) $('#q-address').value = lastPlace.slice(0, 300); }
         $('#q-notes').value = ($('#q-notes').value ? $('#q-notes').value + '\n' : '') + 'Free check: risk ' + lv[0] + (r.stream ? ', watercourse ' + n(r.stream.dist, 0) + ' m away, catchment ' + n(r.stream.areaKm2, 1) + ' km²' : '') + '.';
       });
       const box = $('#chk-map'); box.hidden = false;
@@ -1177,6 +1200,19 @@
       out.innerHTML = '<p class="note err">' + esc(e.code === 'blocked' ? 'Terrain data could not be downloaded. Please try again later, or request a quote below.' : (e.message || 'The check could not be completed.')) + '</p>';
     } finally { btn.disabled = false; }
   }
+  async function findPlace(text) {
+    const out = $('#chk-out'), box = $('#chk-places'); text = String(text || '').trim();
+    if (text.length < 2) { out.innerHTML = '<p class="note err">Type your town, suburb or street address, or paste coordinates such as -26.10512, 28.05741.</p>'; return; }
+    if (!FL.places) return;
+    box.hidden = false; box.innerHTML = '<p class="note">Searching…</p>'; out.innerHTML = '';
+    try {
+      const res = await FL.places.search(text);
+      if (!res.length) { box.innerHTML = '<p class="note err">No place found. Try the town or suburb name, or paste coordinates from Google Maps.</p>'; return; }
+      box.innerHTML = '<span class="hint">Choose the place:</span>' + res.map((r, i) => `<button type="button" data-i="${i}"><b>${esc(r.name)}</b><span>${esc(r.detail)}</span></button>`).join('');
+      $$('button[data-i]', box).forEach(b => b.addEventListener('click', () => { const r = res[+b.dataset.i]; $('#chk-coord').value = r.lat.toFixed(6) + ', ' + r.lon.toFixed(6); box.hidden = true; lastPlace = r.name + (r.detail ? ', ' + r.detail : ''); runCheck(false); }));
+    } catch (e) { box.innerHTML = '<p class="note err">' + esc(e.message || 'The place search is not available right now.') + ' You can paste coordinates instead.</p>'; }
+  }
+  let lastPlace = '';
   function quoteForm() {
     const f = $('#q-form'); if (!f) return;
     $('#q-started').value = String(Date.now());
@@ -1242,6 +1278,7 @@
   function boot() {
     hero(); quoteForm(); contacts(); probe();
     $('#chk-form').addEventListener('submit', e => { e.preventDefault(); runCheck(false); });
+    $('#chk-coord').addEventListener('input', () => { lastPlace = ''; });
     $('#chk-demo').addEventListener('click', () => runCheck(true));
     $$('[data-goto-studio]').forEach(a => a.addEventListener('click', e => { if (window.FL_SWITCH) { e.preventDefault(); window.FL_SWITCH('studio'); } }));
     const y = $('#year'); if (y) y.textContent = new Date().getFullYear();
