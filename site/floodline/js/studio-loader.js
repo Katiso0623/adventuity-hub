@@ -1,7 +1,4 @@
-/* Adventuity Floodline Studio — protected loader.
-   The analysis engine and the Studio are published only in encrypted form (AES-256-GCM, js/studio.bundle.enc).
-   The decryption key is stored in Supabase (table floodline_private_assets) and row-level security releases it
-   only to a signed-in administrator (public.is_admin()). Without an administrator sign-in the code cannot be read or run. */
+ 
 (function () {
   'use strict';
   const CFG = window.FL_CONFIG || {}, SB = CFG.supabase || {}, ST = CFG.studio || {};
@@ -9,7 +6,6 @@
   const $ = s => root.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   let sb = null;
-
   function view(inner) {
     root.innerHTML = `<div class="gate"><div class="gate-card"><div class="gate-brand"><b>${esc((CFG.brand || {}).short || 'Adventuity')}</b><span>Floodline Studio</span></div>${inner}</div></div>`;
   }
@@ -17,7 +13,6 @@
   function fail(msg) { view(`<h1>Studio unavailable</h1><p class="gate-msg err" role="alert">${esc(msg)}</p><p class="gate-foot"><button class="gbtn" type="button" id="g-retry">Try again</button> <a href="index.html">Public website</a></p>`); $('#g-retry').addEventListener('click', boot); }
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s); }); }
   function fromB64(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
-
   function login(msg) {
     view(`<h1>Sign in</h1><p>The flood line analysis Studio is for Adventuity administrators. Sign in with your Adventuity portal account.</p>
       <form id="g-form" novalidate><label for="g-email">E-mail</label><input id="g-email" type="email" autocomplete="username" required>
@@ -39,7 +34,6 @@
       $('#g-msg').textContent = error ? error.message : 'If that address has an account, a reset link has been sent.';
     });
   }
-
   async function unlock() {
     busy('Checking your access…');
     const { data, error } = await sb.from('floodline_private_assets').select('body').eq('name', 'studio-key').maybeSingle();
@@ -60,7 +54,6 @@
     if (!window.FL || !window.FL.studio) throw new Error('The Studio did not start.');
     root.innerHTML = ''; window.FL.studio.start();
   }
-
   async function boot() {
     if (!SB.url || !SB.key) { fail('Supabase is not configured in config.js.'); return; }
     if (!window.crypto || !crypto.subtle) { fail('The Studio needs a secure (https) connection.'); return; }

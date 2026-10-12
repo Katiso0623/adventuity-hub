@@ -1,8 +1,4 @@
-/* ---- geo.js ---- */
-/* Floodline engine — geodesy.
-   Hartebeesthoek94 (WGS84 ellipsoid) Gauss Conform "Lo" projection, UTM, and Web-Mercator tile maths.
-   Internal analysis coordinates are E (east, m) and N (north, m) of the Lo projection:
-   E = -Y(Lo westing), N = -X(Lo southing). Transverse Mercator series after Snyder (1987), eqs 8-9 to 8-25. */
+ 
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
@@ -14,12 +10,9 @@
   const M3 = 15 * E4 / 256 + 45 * E6 / 1024;
   const M4 = 35 * E6 / 3072;
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-
   function meridianArc(phi) {
     return A * (M1 * phi - M2 * Math.sin(2 * phi) + M3 * Math.sin(4 * phi) - M4 * Math.sin(6 * phi));
   }
-
-  /** Transverse Mercator forward. Returns {x: easting from CM (m), y: northing from equator (m)} before false origins. */
   function tmForward(lat, lon, lon0, k0) {
     const phi = lat * D2R, lam = (lon - lon0) * D2R;
     const s = Math.sin(phi), c = Math.cos(phi), t = Math.tan(phi);
@@ -29,7 +22,6 @@
     const y = k0 * (M + N * t * (Aa * Aa / 2 + (5 - T + 9 * C + 4 * C * C) * Aa ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * EP2) * Aa ** 6 / 720));
     return { x, y };
   }
-
   function tmInverse(x, y, lon0, k0) {
     const M = y / k0;
     const mu = M / (A * M1);
@@ -44,16 +36,10 @@
     const lam = (D - (1 + 2 * T1 + C1) * D ** 3 / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * EP2 + 24 * T1 * T1) * D ** 5 / 120) / c;
     return { lat: phi * R2D, lon: lon0 + lam * R2D };
   }
-
-  /** Lo central meridian (odd degree) for a longitude. */
   function loCM(lon) { return 2 * Math.floor(lon / 2) + 1; }
-
-  /** WGS84 lat/lon -> internal E,N (m) for Lo system with central meridian cm. */
   function toLoEN(lat, lon, cm) { const p = tmForward(lat, lon, cm, 1); return { E: p.x, N: p.y }; }
   function fromLoEN(E, N, cm) { return tmInverse(E, N, cm, 1); }
-  /** Surveyor's Lo coordinates (Y westing +, X southing +). */
   function loYX(E, N) { return { Y: -E, X: -N }; }
-
   function utmZone(lon) { return Math.floor((lon + 180) / 6) + 1; }
   function toUTM(lat, lon, zone) {
     const cm = zone * 6 - 183; const p = tmForward(lat, lon, cm, 0.9996);
@@ -62,8 +48,6 @@
   function fromUTM(E, N, zone, south) {
     const cm = zone * 6 - 183; return tmInverse(E - 500000, N - (south ? 10000000 : 0), cm, 0.9996);
   }
-
-  /* ---------- Web Mercator / slippy tiles ---------- */
   function lonToPx(lon, z) { return (lon + 180) / 360 * 256 * Math.pow(2, z); }
   function latToPx(lat, z) {
     const s = Math.sin(lat * D2R);
@@ -74,17 +58,13 @@
     const n = Math.PI - 2 * Math.PI * py / (256 * Math.pow(2, z));
     return R2D * Math.atan(Math.sinh(n));
   }
-  /** Mapzen/AWS Terrarium encoding: h = R*256 + G + B/256 - 32768 */
   function terrariumDecode(r, g, b) { return r * 256 + g + b / 256 - 32768; }
-  /** Ground resolution (m per px) of a web-mercator tile pixel at latitude. */
   function mercRes(lat, z) { return 156543.03392804097 * Math.cos(lat * D2R) / Math.pow(2, z); }
-
   function fmtDMS(v, pos, neg) {
     const h = v < 0 ? neg : pos; v = Math.abs(v);
     const d = Math.floor(v), mf = (v - d) * 60, m = Math.floor(mf), s = (mf - m) * 60;
     return d + '°' + String(m).padStart(2, '0') + '′' + s.toFixed(2).padStart(5, '0') + '″' + h;
   }
-  /** Parse "-26.05, 28.12" or "26°03'00"S 28°07'12"E" etc. Returns {lat, lon} or null. */
   function parseLatLon(str) {
     if (!str) return null;
     const s = String(str).trim().replace(/[,;]+/g, ' ');
@@ -102,7 +82,6 @@
     const nums = s.match(/-?\d+(?:\.\d+)?/g);
     if (nums && nums.length === 2) {
       let a = parseFloat(nums[0]), b = parseFloat(nums[1]);
-      // South Africa convenience: if someone types 26.1 28.1 assume southern latitude
       if (Math.abs(a) > Math.abs(b) && Math.abs(a) <= 180 && Math.abs(b) <= 90) { const t = a; a = b; b = t; }
       if (a > 0 && a < 36 && b > 15 && b < 34) a = -a;
       return valid(a, b);
@@ -110,22 +89,15 @@
     return null;
     function valid(lat, lon) { return (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) ? { lat, lon } : null; }
   }
-
   FL.geo = {
     tmForward, tmInverse, loCM, toLoEN, fromLoEN, loYX, utmZone, toUTM, fromUTM,
     lonToPx, latToPx, pxToLon, pxToLat, terrariumDecode, mercRes, fmtDMS, parseLatLon, D2R, R2D,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- dem.js ---- */
-/* Floodline engine — terrain grids.
-   Grid: regular square-cell raster in internal Lo coordinates (E east, N north, metres).
-   Column i -> E = e0 + i*dx ; row j (0 = north) -> N = n0 - j*dx. z in metres, NaN = no data. */
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
   const G = () => FL.geo;
-
   class Grid {
     constructor(nx, ny, e0, n0, dx, z) {
       this.nx = nx; this.ny = ny; this.e0 = e0; this.n0 = n0; this.dx = dx;
@@ -140,7 +112,6 @@
       const i = Math.round((E - this.e0) / this.dx), j = Math.round((this.n0 - N) / this.dx);
       return (i < 0 || j < 0 || i >= this.nx || j >= this.ny) ? -1 : j * this.nx + i;
     }
-    /** Bilinear sample of any Float32 field defined on this grid (defaults to z). */
     sample(E, N, field) {
       const f = field || this.z;
       const fi = (E - this.e0) / this.dx, fj = (this.n0 - N) / this.dx;
@@ -148,7 +119,7 @@
       const i = Math.min(Math.floor(fi), this.nx - 2), j = Math.min(Math.floor(fj), this.ny - 2);
       const u = fi - i, v = fj - j, k = j * this.nx + i;
       const a = f[k], b = f[k + 1], c = f[k + this.nx], d = f[k + this.nx + 1];
-      if (a !== a || b !== b || c !== c || d !== d) { // any NaN -> nearest valid
+      if (a !== a || b !== b || c !== c || d !== d) { 
         const n = f[Math.round(fj) * this.nx + Math.round(fi)];
         return n;
       }
@@ -160,19 +131,14 @@
       for (const v of this.z) { if (v === v) { if (v < mn) mn = v; if (v > mx) mx = v; } else nv++; }
       return { min: mn, max: mx, nodata: nv };
     }
-    /** New grid resampled (bilinear) to a sub-window at cell size dx2. */
     resample(e0, n0, nx, ny, dx2) {
       const g = new Grid(nx, ny, e0, n0, dx2);
       for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) g.z[j * nx + i] = this.sample(e0 + i * dx2, n0 - j * dx2);
       return g;
     }
   }
-
-  /* ------------------------------------------------------------------ live terrain (AWS Terrain Tiles) */
   const TERRARIUM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
   const tileCache = new Map();
-
-  /** Browser tile loader: resolves Float32Array(65536) heights or rejects {code:'blocked'|'http'}. */
   function browserTileLoader(z, x, y, url) {
     const key = z + '/' + x + '/' + y;
     if (tileCache.has(key)) return tileCache.get(key);
@@ -198,17 +164,10 @@
     tileCache.set(key, p);
     return p;
   }
-
-  /** Pick a tile zoom whose pixel size is close to the requested cell size. */
   function zoomFor(lat, cell) {
     for (let z = 15; z >= 8; z--) if (G().mercRes(lat, z) >= cell * 0.55) return z;
     return 8;
   }
-
-  /**
-   * Build a terrain Grid around (lat, lon) in Lo coordinates.
-   * opts: {lat, lon, cm, cE, cN (optional centre in E/N), halfW, halfH, cell, zoom, loader, onProgress}
-   */
   async function fetchLiveTerrain(opts) {
     const geo = G();
     const cm = opts.cm != null ? opts.cm : geo.loCM(opts.lon);
@@ -218,7 +177,6 @@
     const e0 = c.E - (nx - 1) * cell / 2, n0 = c.N + (ny - 1) * cell / 2;
     const ll = geo.fromLoEN(c.E, c.N, cm);
     const z = opts.zoom || zoomFor(ll.lat, cell);
-    // lat/lon bounds from the grid border
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
     const edge = (E, N) => { const p = geo.fromLoEN(E, N, cm); la0 = Math.min(la0, p.lat); la1 = Math.max(la1, p.lat); lo0 = Math.min(lo0, p.lon); lo1 = Math.max(lo1, p.lon); };
     for (let t = 0; t <= 16; t++) {
@@ -249,7 +207,6 @@
     const grid = new Grid(nx, ny, e0, n0, cell);
     const pxBase = tx0 * 256, pyBase = ty0 * 256;
     for (let j = 0; j < ny; j++) {
-      // inverse projection is smooth: evaluate exactly every 8 columns, interpolate between
       let prev = null;
       for (let i = 0; i < nx; i += 8) {
         const i2 = Math.min(i + 8, nx - 1);
@@ -266,7 +223,6 @@
     return grid;
     function proj(i, j) { const p = geo.fromLoEN(e0 + i * cell, n0 - j * cell, cm); return [geo.lonToPx(p.lon, z), geo.latToPx(p.lat, z)]; }
   }
-
   function bilin(f, w, h, fx, fy) {
     if (fx < 0 || fy < 0 || fx > w - 1 || fy > h - 1) return NaN;
     const i = Math.min(Math.floor(fx), w - 2), j = Math.min(Math.floor(fy), h - 2), u = fx - i, v = fy - j, k = j * w + i;
@@ -274,9 +230,6 @@
     if (a !== a || b !== b || c !== c || d !== d) return f[Math.round(fy) * w + Math.round(fx)];
     return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
   }
-
-  /* ------------------------------------------------------------------ uploaded rasters */
-  /** Source raster: {w, h, data(Float32Array), x0 (x of left edge), y0 (y of top edge), rx (x per col), ry (y per row, usually negative), crs} */
   function parseAsciiGrid(text) {
     const lines = text.split(/\r?\n/);
     const hdr = {}; let li = 0;
@@ -298,8 +251,6 @@
     if (k < w * h) throw new Error('ASCII grid ended early: read ' + k + ' of ' + (w * h) + ' values.');
     return { w, h, data, x0: xl, y0: yl + h * dyv, rx: dxv, ry: -dyv };
   }
-
-  /** Read a GeoTIFF with geotiff.js (window.GeoTIFF). Returns source raster + detected crs. */
   async function parseGeoTiff(buffer) {
     if (!root.GeoTIFF) throw new Error('GeoTIFF reader not loaded.');
     const tiff = await root.GeoTIFF.fromArrayBuffer(buffer);
@@ -315,7 +266,6 @@
     const epsg = keys.ProjectedCSTypeGeoKey || keys.GeographicTypeGeoKey || null;
     return { w, h, data, x0: ox, y0: oy, rx, ry, epsg, crs: crsFromEpsg(epsg) };
   }
-
   function crsFromEpsg(code) {
     if (!code) return null;
     if (code === 4326 || code === 4148) return { kind: 'geo' };
@@ -324,8 +274,6 @@
     if (code >= 22275 && code <= 22293) return { kind: 'lo-survey', cm: 15 + (code - 22275), warn: 'Cape datum (pre-1999). Heights and positions may be offset from Hartebeesthoek94.' };
     return { kind: 'unknown', epsg: code };
   }
-
-  /** Function mapping WGS84 lat/lon -> source raster x,y for a given crs descriptor. */
   function sourceProjector(crs) {
     const geo = G();
     switch (crs.kind) {
@@ -346,8 +294,6 @@
       default: throw new Error('Unknown coordinate system');
     }
   }
-
-  /** Resample an uploaded raster into a working Grid in Lo (cm) at cell size. If extent not given, covers the whole raster. */
   function rasterToGrid(src, crs, cm, cell, extent) {
     const geo = G(), toSrc = sourceProjector(crs), inv = sourceInverse(crs);
     let e0, n0, nx, ny;
@@ -372,8 +318,6 @@
     g.meta = { source: 'upload', cm, srcRes: Math.abs(src.rx) };
     return g;
   }
-
-  /** Fill small NaN holes by averaging valid neighbours (iterative). */
   function patchHoles(g, maxIter) {
     const { nx, ny, z } = g;
     for (let it = 0; it < (maxIter || 6); it++) {
@@ -391,8 +335,6 @@
     }
     return g;
   }
-
-  /** Terrain provider that downloads the global terrain tiles for any coordinate (Lo system with central meridian cm). */
   function liveProvider(cm, opts) {
     return {
       kind: 'live', cm, label: 'SRTM-derived global terrain (AWS Terrain Tiles, ~30 m)',
@@ -401,23 +343,13 @@
   }
   FL.dem = { liveProvider, Grid, fetchLiveTerrain, browserTileLoader, zoomFor, parseAsciiGrid, parseGeoTiff, crsFromEpsg, rasterToGrid, patchHoles, bilin, TERRARIUM_URL };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- contour.js ---- */
-/* Floodline engine — marching squares contouring and polyline geometry helpers. */
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
-
-  // segment table: pairs of edge ids (0 top a-b, 1 right b-c, 2 bottom d-c, 3 left a-d)
   const TABLE = {
     1: [[3, 2]], 2: [[2, 1]], 3: [[3, 1]], 4: [[0, 1]], 6: [[0, 2]], 7: [[3, 0]], 8: [[3, 0]], 9: [[0, 2]],
     11: [[0, 1]], 12: [[3, 1]], 13: [[1, 2]], 14: [[2, 3]],
   };
-
-  /**
-   * Contour lines of field f (nx*ny) at level. Values that are NaN count as "low" when pad=true.
-   * Returns array of {pts:[[fi,fj],...], closed:boolean} in fractional grid coordinates.
-   */
   function contour(f, nx, ny, level, opts) {
     opts = opts || {};
     const pad = !!opts.pad;
@@ -425,7 +357,7 @@
     const val = pad
       ? (i, j) => { const ii = i - 1, jj = j - 1; if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) return -Infinity; const v = f[jj * nx + ii]; return v === v ? v : -Infinity; }
       : (i, j) => f[j * nx + i];
-    const segs = []; // [keyA, keyB, xA, yA, xB, yB]
+    const segs = []; 
     const off = pad ? -1 : 0;
     for (let j = 0; j < H - 1; j++) for (let i = 0; i < W - 1; i++) {
       const a = val(i, j), b = val(i + 1, j), c = val(i + 1, j + 1), d = val(i, j + 1);
@@ -461,7 +393,6 @@
         }
       }
     }
-    // stitch
     const nS = segs.length / 6, byKey = new Map(), used = new Uint8Array(nS);
     for (let s = 0; s < nS; s++) for (const e of [0, 1]) { const k = segs[s * 6 + e]; const l = byKey.get(k); if (l) l.push(s); else byKey.set(k, [s]); }
     const lines = [];
@@ -469,7 +400,6 @@
       if (used[s0]) continue; used[s0] = 1;
       const pts = [[segs[s0 * 6 + 2], segs[s0 * 6 + 3]], [segs[s0 * 6 + 4], segs[s0 * 6 + 5]]];
       const kStart = segs[s0 * 6]; let kEnd = segs[s0 * 6 + 1];
-      // forward
       for (;;) {
         const l = byKey.get(kEnd); let nxt = -1;
         if (l) for (const s of l) if (!used[s]) { nxt = s; break; }
@@ -478,7 +408,7 @@
         else { pts.push([segs[nxt * 6 + 2], segs[nxt * 6 + 3]]); kEnd = segs[nxt * 6]; }
       }
       let closed = kEnd === kStart;
-      if (!closed) { // backward
+      if (!closed) { 
         let kb = kStart;
         for (;;) {
           const l = byKey.get(kb); let nxt = -1;
@@ -493,10 +423,7 @@
     }
     return lines;
   }
-
-  /** Convert fractional grid coords to E,N for grid g. */
   function toEN(g, line) { return line.map(([fi, fj]) => [g.e0 + fi * g.dx, g.n0 - fj * g.dx]); }
-
   function ringArea(p) { let a = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += (p[j][0] + p[i][0]) * (p[j][1] - p[i][1]); return a / 2; }
   function polyLength(p) { let L = 0; for (let i = 1; i < p.length; i++) L += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return L; }
   function chaikin(p, iter, closed) {
@@ -514,7 +441,7 @@
     }
     return p;
   }
-  function simplify(p, tol) { // Douglas-Peucker
+  function simplify(p, tol) { 
     if (p.length < 3) return p.slice();
     const keep = new Uint8Array(p.length); keep[0] = keep[p.length - 1] = 1;
     const stack = [[0, p.length - 1]];
@@ -543,7 +470,6 @@
     const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den, u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
     return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? { t, u, p: [a[0] + t * r[0], a[1] + t * r[1]] } : null;
   }
-  /** Resample a polyline at uniform spacing. */
   function resample(p, ds) {
     const out = [p[0]]; let acc = 0, next = ds;
     for (let i = 1; i < p.length; i++) {
@@ -563,22 +489,13 @@
     }
     return out;
   }
-
   FL.geom = { contour, toEN, ringArea, polyLength, chaikin, simplify, pointInRing, segIntersect, resample, movingAverage };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- terrain.js ---- */
-/* Floodline engine — terrain analysis.
-   Priority-Flood depression filling with epsilon gradient (Barnes, Lehman & Mulla 2014),
-   D8 flow directions (O'Callaghan & Mark 1984), flow accumulation, watershed delineation,
-   longest flow path, 10-85 and equal-area slopes (SANRAL Drainage Manual 2013, ch. 3),
-   Horn (1981) terrain slope and Strahler stream ordering. */
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
-  const DI = [1, 1, 0, -1, -1, -1, 0, 1], DJ = [0, -1, -1, -1, 0, 1, 1, 1]; // E, NE, N, NW, W, SW, S, SE (j down = south)
+  const DI = [1, 1, 0, -1, -1, -1, 0, 1], DJ = [0, -1, -1, -1, 0, 1, 1, 1]; 
   const DL = [1, Math.SQRT2, 1, Math.SQRT2, 1, Math.SQRT2, 1, Math.SQRT2];
-
   class MinHeap {
     constructor(cap) { this.k = new Float64Array(cap); this.v = new Int32Array(cap); this.n = 0; }
     push(key, val) {
@@ -596,8 +513,6 @@
       return top;
     }
   }
-
-  /** Returns Float64Array of filled elevations; every valid cell drains to the grid edge or a no-data cell. */
   function fillDepressions(g, eps) {
     const { nx, ny, z } = g, n = nx * ny, zf = new Float64Array(n), closed = new Uint8Array(n);
     eps = eps || 1e-5;
@@ -622,8 +537,6 @@
     }
     return zf;
   }
-
-  /** D8 directions (0..7, or -1 = drains off grid / into no-data). */
   function d8(g, zf) {
     const { nx, ny } = g, n = nx * ny, dir = new Int8Array(n).fill(-1);
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -640,8 +553,6 @@
     return dir;
   }
   function downstream(g, dir, k) { const d = dir[k]; if (d < 0) return -1; const i = k % g.nx + DI[d], j = ((k / g.nx) | 0) + DJ[d]; return j * g.nx + i; }
-
-  /** Flow accumulation in cells (each cell counts itself). Also returns topological order. */
   function accumulate(g, dir) {
     const { nx, ny } = g, n = nx * ny, indeg = new Int32Array(n), acc = new Float64Array(n), order = new Int32Array(n);
     for (let k = 0; k < n; k++) { const t = downstream(g, dir, k); if (t >= 0) indeg[t]++; }
@@ -654,8 +565,6 @@
     }
     return { acc, order: order.subarray(0, tail) };
   }
-
-  /** Snap a point to the nearest channel cell whose upstream area >= minKm2 within radius (m). */
   function snapToStream(g, acc, E, N, minKm2, radius) {
     const cellKm2 = g.dx * g.dx / 1e6, thr = minKm2 / cellKm2;
     const ci = Math.round((E - g.e0) / g.dx), cj = Math.round((g.n0 - N) / g.dx), r = Math.ceil(radius / g.dx);
@@ -667,8 +576,6 @@
     }
     return best >= 0 ? { k: best, dist: bd, areaKm2: acc[best] * cellKm2 } : (bigK >= 0 ? { k: bigK, dist: Math.hypot(bigK % g.nx - ci, ((bigK / g.nx) | 0) - cj) * g.dx, areaKm2: bigA * cellKm2, weak: true } : null);
   }
-
-  /** Upstream mask + flow length from each cell to the outlet. */
   function delineate(g, dir, outlet) {
     const { nx, ny } = g, n = nx * ny, mask = new Uint8Array(n), flen = new Float64Array(n).fill(-1);
     const q = new Int32Array(n); let h = 0, t = 0; q[t++] = outlet; mask[outlet] = 1; flen[outlet] = 0;
@@ -688,8 +595,6 @@
     }
     return { mask, flen, cells: count, areaKm2: count * g.dx * g.dx / 1e6, touchesEdge: touches };
   }
-
-  /** Longest watercourse: path (cell indices, outlet last) from the most remote cell. */
   function longestPath(g, dir, del, outlet) {
     let far = outlet, fl = 0;
     for (let k = 0; k < del.flen.length; k++) if (del.flen[k] > fl) { fl = del.flen[k]; far = k; }
@@ -697,15 +602,12 @@
     while (c !== outlet && guard++ < 1e6) { c = downstream(g, dir, c); if (c < 0) break; path.push(c); }
     return { path, lengthM: fl };
   }
-
-  /** Profile along a path (outlet last): returns [{s (m from outlet), z}] sorted from outlet upwards. */
   function profile(g, path, zfield) {
     const out = []; let s = 0;
     for (let i = path.length - 1; i >= 0; i--) {
       if (i < path.length - 1) { const [e1, n1] = g.EN(path[i]), [e2, n2] = g.EN(path[i + 1]); s += Math.hypot(e1 - e2, n1 - n2); }
       out.push({ s, z: zfield[path[i]] });
     }
-    // enforce monotonic non-decreasing (filled DEM already is, but guard rounding)
     for (let i = 1; i < out.length; i++) if (out[i].z < out[i - 1].z) out[i].z = out[i - 1].z;
     return out;
   }
@@ -714,19 +616,15 @@
     let lo = 0, hi = prof.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (prof[m].s <= s) lo = m; else hi = m; }
     const a = prof[lo], b = prof[hi]; return a.z + (b.z - a.z) * (s - a.s) / ((b.s - a.s) || 1);
   }
-  /** SANRAL 10-85 slope: S = (H0.85L - H0.10L) / (1000 * 0.75 L) with L in km  (m/m). */
   function slope1085(prof) {
     const L = prof[prof.length - 1].s; const h10 = zAtS(prof, 0.10 * L), h85 = zAtS(prof, 0.85 * L);
     return { S: (h85 - h10) / (0.75 * L), h10, h85, L };
   }
-  /** Equal-area slope: line through the outlet with equal area under it as under the profile. */
   function slopeEqualArea(prof) {
     const L = prof[prof.length - 1].s, HB = prof[0].z; let area = 0;
     for (let i = 1; i < prof.length; i++) { const l = prof[i].s - prof[i - 1].s; area += l * ((prof[i].z + prof[i - 1].z) / 2 - HB); }
     return { S: 2 * area / (L * L), L };
   }
-
-  /** Horn (1981) slope (m/m) of a cell from the raw DEM. */
   function hornSlope(g, k) {
     const { nx, ny, z, dx } = g, i = k % nx, j = (k / nx) | 0;
     const at = (ii, jj) => { ii = Math.max(0, Math.min(nx - 1, ii)); jj = Math.max(0, Math.min(ny - 1, jj)); const v = z[jj * nx + ii]; return v === v ? v : z[k]; };
@@ -734,8 +632,6 @@
     const dzdx = ((c + 2 * f + ii2) - (a + 2 * d + gg)) / (8 * dx), dzdy = ((gg + 2 * h + ii2) - (a + 2 * b + c)) / (8 * dx);
     return Math.hypot(dzdx, dzdy);
   }
-
-  /** Catchment slope statistics and SANRAL surface-slope class fractions. */
   function catchmentSlopes(g, mask) {
     let n = 0, sum = 0; const cls = [0, 0, 0, 0]; let zmin = Infinity, zmax = -Infinity, ce = 0, cn = 0;
     for (let k = 0; k < mask.length; k++) {
@@ -746,13 +642,10 @@
     }
     return { mean: sum / n, classes: cls.map(c => c / n), zmin, zmax, centroid: { E: ce / n, N: cn / n } };
   }
-
-  /** Stream network polylines inside an optional mask, with Strahler order. thrKm2 = channel initiation area. */
   function streams(g, dir, acc, thrKm2, mask) {
     const { nx, ny } = g, n = nx * ny, thr = thrKm2 / (g.dx * g.dx / 1e6);
     const isS = new Uint8Array(n);
     for (let k = 0; k < n; k++) if (acc[k] >= thr && (!mask || mask[k])) isS[k] = 1;
-    // upstream stream counts & strahler via topological pass over stream cells
     const up = new Int32Array(n), ord = new Int8Array(n), maxUp = new Int8Array(n), cntMax = new Int8Array(n);
     for (let k = 0; k < n; k++) if (isS[k]) { const t = downstream(g, dir, k); if (t >= 0 && isS[t]) up[t]++; }
     const q = []; for (let k = 0; k < n; k++) if (isS[k] && up[k] === 0) { q.push(k); }
@@ -768,9 +661,8 @@
     }
     const visited = new Uint8Array(n), lines = [];
     const starts = [];
-    for (const c of q) { // q is in topological order (heads first)
+    for (const c of q) { 
       if (up[c] === 0) { starts.push(c); continue; }
-      // start of a new order segment
       const t = c; let sameUp = false;
       for (let d = 0; d < 8; d++) { const ii = t % nx - DI[d], jj = ((t / nx) | 0) - DJ[d]; if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; const nb = jj * nx + ii; if (isS[nb] && downstream(g, dir, nb) === t && ord[nb] === ord[t]) { sameUp = true; break; } }
       if (!sameUp) starts.push(c);
@@ -784,14 +676,11 @@
     }
     return { lines, maxOrder: Math.max(1, ...lines.map(l => l.order)) };
   }
-
-  /** Trace the D8 path downstream from cell k for at most maxLen metres. Returns cell list. */
   function traceDown(g, dir, k, maxLen) {
     const out = [k]; let L = 0, c = k;
     while (L < maxLen) { const t = downstream(g, dir, c); if (t < 0) break; L += DL[dir[c]] * g.dx; out.push(t); c = t; }
     return out;
   }
-  /** Trace upstream along the largest-accumulation neighbour for at most maxLen metres. */
   function traceUp(g, dir, acc, k, maxLen) {
     const out = [k]; let L = 0, c = k; const { nx, ny } = g;
     while (L < maxLen) {
@@ -806,18 +695,11 @@
     }
     return out;
   }
-
   FL.terrain = { fillDepressions, d8, downstream, accumulate, snapToStream, delineate, longestPath, profile, zAtS, slope1085, slopeEqualArea, hornSlope, catchmentSlopes, streams, traceDown, traceUp, DI, DJ, DL, MinHeap };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- screening.js ---- */
-/* Floodline engine — quick public flood screening.
-   Height Above the Nearest Drainage (HAND; Rennó et al. 2008, Nobre et al. 2011): every cell is compared with the
-   elevation of the stream cell it drains to. Low HAND next to a watercourse marks flood-prone ground. Indicative only. */
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
-
   async function screen(provider, site, onProgress) {
     const T = FL.terrain, cm = provider.cm != null ? provider.cm : FL.geo.loCM(site.lon);
     const p = site.E != null ? site : Object.assign({}, site, FL.geo.toLoEN(site.lat, site.lon, cm));
@@ -839,15 +721,12 @@
       const [sE, sN] = g.EN(snap.k); res.stream = { E: sE, N: sN, dist: snap.dist, areaKm2: snap.areaKm2 };
     }
     const streams = T.streams(g, dir, acc, 0.25, null); res.streams = streams.lines;
-    // classification
     const d = res.stream ? res.stream.dist : Infinity, h = res.siteHAND;
     if (d < 150 && h < 2.5) res.level = 'high';
     else if (d < 400 || h < 5) res.level = 'moderate';
     else res.level = 'low';
     return res;
   }
-
-  /** Canvas of HAND bands (<=2 m dark, <=5 m light) for display. */
   function handCanvas(r) {
     const g = r.grid, c = document.createElement('canvas'); c.width = g.nx; c.height = g.ny;
     const ctx = c.getContext('2d'), img = ctx.createImageData(g.nx, g.ny), d = img.data;
@@ -859,22 +738,13 @@
     }
     ctx.putImageData(img, 0, 0); return c;
   }
-
   FL.screening = { screen, handCanvas };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- demo.js ---- */
-/* Floodline engine — built-in demonstration terrain.
-   A synthetic Highveld-type valley (NOT a real site) used when live terrain cannot be downloaded,
-   e.g. inside a sandboxed preview. Elevations are generated from a small river network with
-   floodplains, valley sides and fractal noise so that every engine stage has realistic input. */
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
-
-  // Domain in local metres: x east 0..14000, y north 0..12000. Origin placed in Lo29.
   const CM = 29;
-  const ORIGIN = { E: -18000, N: -2893000 };          // local (0,0) in internal Lo E/N (~26.14°S, 28.82°E)
+  const ORIGIN = { E: -18000, N: -2893000 };          
   const RIVERS = [
     { name: 'Main', bed0: 1594, bed1: 1527, fp: 110, sv: 0.045, hc: 2.4, wc: 14,
       pts: [[1500, 10600], [2600, 9900], [3500, 9000], [4400, 8500], [5200, 7650], [6000, 7350], [6800, 6900], [7500, 6450], [8200, 6050], [9000, 5650], [9600, 5200], [10300, 4750], [11000, 4300], [11800, 3950], [12600, 3600], [13400, 3250], [14200, 2950]] },
@@ -887,8 +757,6 @@
     { name: 'Trib D', bed0: 1606, joinMain: true, fp: 30, sv: 0.07, hc: 1.1, wc: 6,
       pts: [[10200, 11900], [9900, 10900], [9500, 9800], [9150, 8600], [8850, 7300], [8600, 5850]] },
   ];
-
-  // meander perturbation + cumulative length
   function prep() {
     for (const r of RIVERS) {
       const p = r.pts, dense = [];
@@ -919,13 +787,11 @@
     }
   }
   function bedAt(r, s) {
-    // slightly concave long profile
     const t = Math.min(1, Math.max(0, s / r.len));
     return r.bed1 + (r.bed0 - r.bed1) * Math.pow(1 - t, 1.25);
   }
   function nearest(r, x, y) {
     const d = r.d, n = d.length;
-    // coarse pass on every 8th vertex, then refine on nearby segments
     let bi = 0, bd2 = Infinity;
     for (let i = 0; i < n; i += 8) { const dx = d[i][0] - x, dy = d[i][1] - y, q = dx * dx + dy * dy; if (q < bd2) { bd2 = q; bi = i; } }
     let best = Infinity, bs = 0;
@@ -938,7 +804,6 @@
     }
     return { dist: Math.sqrt(best), s: bs };
   }
-  // value noise
   function hash(i, j, s) { let h = (i * 374761393 + j * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
   function vnoise(x, y, s) {
     const i = Math.floor(x), j = Math.floor(y), u = x - i, v = y - j;
@@ -948,14 +813,9 @@
   }
   function fbm(x, y, oct, s) { let a = 0, amp = 1, f = 1, n = 0; for (let o = 0; o < oct; o++) { a += amp * (vnoise(x * f, y * f, s + o) - 0.5); n += amp; amp *= 0.5; f *= 2.03; } return a / n * 2; }
   function smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
-
-  /** Elevation (m) at local metres x,y. */
   function elevLocal(x, y) {
-    // plateau: falls towards the SE, rolling hills
     let zp = 1655 - 0.0042 * x + 0.0016 * y + 18 * fbm(x / 3200, y / 3200, 4, 11) + 5 * fbm(x / 900, y / 900, 3, 29);
-    // ridge along the north-west
     zp += 16 * Math.exp(-Math.pow((y - 12500) / 1300, 2));
-    // regional divides: terrain falls away beyond the northern ridge and the western/eastern rims
     zp -= 0.012 * Math.max(0, y - 12900) + 0.010 * Math.max(0, -x - 600) + 0.006 * Math.max(0, x - 15200);
     let z = zp, dNear = Infinity;
     for (const r of RIVERS) {
@@ -965,22 +825,18 @@
       const zb = bedAt(r, q.s);
       const d = q.dist; if (d < dNear) dNear = d;
       let v = Math.max(0, d - r.fp) * r.sv + 0.9 * Math.min(d, r.fp) / r.fp
-        + 1.6 * Math.max(0, Math.min(1, (d - r.fp) / 60)) // terrace step at floodplain edge
+        + 1.6 * Math.max(0, Math.min(1, (d - r.fp) / 60)) 
         - r.hc * Math.exp(-Math.pow(d / r.wc, 2));
-      // upstream ends fade into the plateau
       const head = Math.min(1, q.s / 500);
       const zv = zb + v + (1 - head) * 6;
       z = smin(z, zv, 9);
     }
-    const calm = Math.min(1, 0.25 + dNear / 90); // smoother channel bed, rougher hillslopes
+    const calm = Math.min(1, 0.25 + dNear / 90); 
     z += calm * (0.7 * fbm(x / 160, y / 160, 3, 47) + 0.25 * fbm(x / 45, y / 45, 2, 61));
     return z;
   }
   prep();
-
   function toLocal(E, N) { return [E - ORIGIN.E, N - ORIGIN.N]; }
-
-  /** Terrain provider interface: getGrid({cE, cN, halfW, halfH, cell}) -> Grid */
   const provider = {
     kind: 'demo', cm: CM, label: 'Built-in demo terrain (synthetic Highveld valley; not a real site)',
     async getGrid(o) {
@@ -998,15 +854,12 @@
       g.meta = { source: 'demo', cm: CM, srcRes: 30 };
       return g;
     },
-    // the demo site: a point beside the Demo Spruit
     site() {
       const E = ORIGIN.E + 6990, N = ORIGIN.N + 9200; const ll = FL.geo.fromLoEN(E, N, CM);
       return { E, N, lat: ll.lat, lon: ll.lon, name: 'Erf 1024 Demo Spruit (synthetic)' };
     },
     bounds: { e0: ORIGIN.E - 4000, e1: ORIGIN.E + 18000, n0: ORIGIN.N - 4000, n1: ORIGIN.N + 17000 },
   };
-
-  /** Example crossings on the demo river: a two-span road bridge downstream of the site and a triple box culvert upstream. */
   function structures() {
     if (!FL.structures) return [];
     const b = FL.structures.create('bridge', 400, { zmin: 1565.38, chWidth: 20 });
@@ -1017,19 +870,13 @@
   }
   FL.demo = { provider, elevLocal, ORIGIN, CM, structures };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- mapview.js ---- */
-/* Floodline UI — interactive analysis map in Lo coordinates (canvas). Grid north up. */
 (function (root) {
   'use strict';
   const FL = root.FL = root.FL || {};
-
   const PAL = {
     paper: '#f4f6f5', contour: 'rgba(92,84,70,0.32)', contourMajor: 'rgba(92,84,70,0.62)', river: '#2a7fc0', stream: 'rgba(42,127,192,0.55)',
     catch: '#2f7d4f', xs: '#2b2f36', f100: '#c8362b', f50: '#1f63c6', site: '#7a2b8f', fill100: 'rgba(200,54,43,0.10)', fill50: 'rgba(31,99,198,0.16)',
   };
-
-  /** Hillshade + hypsometric tint of a grid onto a canvas (one pixel per cell). */
   function hillshadeCanvas(g, opts) {
     opts = opts || {};
     const { nx, ny, z, dx } = g, c = document.createElement('canvas'); c.width = nx; c.height = ny;
@@ -1042,11 +889,10 @@
       if (v !== v) { d[p + 3] = 0; continue; }
       const a = at(i - 1, j - 1), b = at(i, j - 1), cc = at(i + 1, j - 1), dd = at(i - 1, j), f = at(i + 1, j), gg = at(i - 1, j + 1), h = at(i, j + 1), ii = at(i + 1, j + 1);
       const fx = ((cc + 2 * f + ii) - (a + 2 * dd + gg)) / (8 * dx) * zf, fy = ((gg + 2 * h + ii) - (a + 2 * b + cc)) / (8 * dx) * zf;
-      const slope = Math.atan(Math.hypot(fx, fy)); const aspect = Math.atan2(fy, -fx); // ESRI/Horn convention, rows run south
+      const slope = Math.atan(Math.hypot(fx, fy)); const aspect = Math.atan2(fy, -fx); 
       let sh = Math.cos(zen) * Math.cos(slope) + Math.sin(zen) * Math.sin(slope) * Math.cos(az - aspect);
       if (sh !== sh) sh = 0.7; sh = Math.max(0, sh);
       const t = (v - st.min) / zr;
-      // tint: valley sage -> upland sand
       const r0 = 214 + 22 * t, g0 = 222 + 6 * t, b0 = 206 - 10 * t;
       const m = 0.55 + 0.55 * sh;
       d[p] = Math.min(255, r0 * m); d[p + 1] = Math.min(255, g0 * m); d[p + 2] = Math.min(255, b0 * m); d[p + 3] = 255;
@@ -1054,8 +900,6 @@
     ctx.putImageData(img, 0, 0);
     return c;
   }
-
-  /** Depth raster -> canvas (transparent where dry). */
   function depthCanvas(nx, ny, depth, maxD, alpha) {
     const c = document.createElement('canvas'); c.width = nx; c.height = ny;
     const ctx = c.getContext('2d'), img = ctx.createImageData(nx, ny), d = img.data, M = maxD || 3;
@@ -1068,8 +912,6 @@
     ctx.putImageData(img, 0, 0);
     return c;
   }
-
-  /** Contour polylines (E,N) of a grid at interval; returns {minor:[], major:[], labels:[]}. */
   function contours(g, interval, majorEvery) {
     const st = g.stats(), out = { minor: [], major: [], labels: [] };
     const start = Math.ceil(st.min / interval) * interval;
@@ -1085,7 +927,6 @@
     }
     return out;
   }
-
   class MapView {
     constructor(el, opts) {
       this.el = el; this.opts = opts || {};
@@ -1229,7 +1070,6 @@
           }
         }
       }
-      // site & river markers
       const mark = (p, col, label) => { if (!p) return; const [x, y] = this.toScreen(p.E, p.N); ctx.fillStyle = col; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 6.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); if (label) { ctx.font = '700 12px "Barlow Condensed", "Arial Narrow", sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.strokeText(label, x + 10, y); ctx.fillStyle = col; ctx.fillText(label, x + 10, y); } };
       if (this.layers.site) { mark(this.site || (R && R.site), PAL.site, this.siteLabel || 'SITE'); if (this.river) mark(this.river, PAL.river, 'RIVER POINT'); }
       this._scaleBar(ctx); this._north(ctx);
@@ -1248,17 +1088,10 @@
       ctx.fillStyle = '#1c3246'; ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 6, y + 8); ctx.lineTo(x, y + 4); ctx.lineTo(x - 6, y + 8); ctx.closePath(); ctx.fill();
       ctx.font = '700 10px "Barlow Condensed", "Arial Narrow", sans-serif'; ctx.textAlign = 'center'; ctx.fillText('N', x, y + 16);
     }
-    /** PNG data URL of the current view (for figures). */
     snapshot() { return this.canvas.toDataURL('image/png'); }
   }
-
   FL.MapView = MapView; FL.mapfx = { hillshadeCanvas, depthCanvas, contours, PAL };
 })(typeof window !== 'undefined' ? window : globalThis);
-
-/* ---- site.js ---- */
-/* Adventuity Floodline — public website behaviour: hero drawing, free flood check, quote request form.
-   The published website carries only the terrain screening code; the analysis engine stays in the protected Studio.
-   When the full engine is present (preview and local development) the hero is computed live instead. */
 (function () {
   'use strict';
   const FL = window.FL, CFG = window.FL_CONFIG || {}, ARTIFACT = !!window.FL_ARTIFACT;
@@ -1266,8 +1099,6 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n = (v, d) => (v == null || v !== v) ? '—' : Number(v).toFixed(d == null ? 1 : d);
   let demoR = null, liveOK = ARTIFACT ? false : null;
-
-  /* ---------------- hero: run the real engine on the demo valley ---------------- */
   async function hero() {
     const box = $('#hero-map'); if (!box) return;
     if (!FL.pipeline) return heroStatic(box);
@@ -1288,7 +1119,6 @@
       thumbs();
     } catch (e) { console.error(e); }
   }
-  /** Published website: the hero and the sample drawings are images rendered from the engine output. */
   async function heroStatic(box) {
     const v = '?v=' + (window.FL_BUILD || '1');
     const img = new Image(); img.alt = ''; img.className = 'hero-img'; img.src = 'assets/hero.jpg' + v; img.decoding = 'async'; box.insertBefore(img, box.firstChild);
@@ -1308,8 +1138,6 @@
       $('#th-plan').innerHTML = fit(a.svg); $('#th-sect').innerHTML = fit(b.svg);
     } catch (e) { console.error(e); }
   }
-
-  /* ---------------- free flood check ---------------- */
   let checkMap = null, lastCheck = null;
   async function runCheck(useDemo) {
     const out = $('#chk-out'), btn = $('#chk-go');
@@ -1334,7 +1162,6 @@
         if (!useDemo) { $('#q-coord').value = site.lat.toFixed(6) + ', ' + site.lon.toFixed(6); }
         $('#q-notes').value = ($('#q-notes').value ? $('#q-notes').value + '\n' : '') + 'Free check: risk ' + lv[0] + (r.stream ? ', watercourse ' + n(r.stream.dist, 0) + ' m away, catchment ' + n(r.stream.areaKm2, 1) + ' km²' : '') + '.';
       });
-      // map
       const box = $('#chk-map'); box.hidden = false;
       if (!checkMap) { checkMap = new FL.MapView(box, {}); }
       const g = r.grid; const fake = { coarse: g, fine: null, catchment: { streams: { lines: r.streams }, outline: [] }, maps: {}, site: r.site, cm: r.cm };
@@ -1350,8 +1177,6 @@
       out.innerHTML = '<p class="note err">' + esc(e.code === 'blocked' ? 'Terrain data could not be downloaded. Please try again later, or request a quote below.' : (e.message || 'The check could not be completed.')) + '</p>';
     } finally { btn.disabled = false; }
   }
-
-  /* ---------------- quote form ---------------- */
   function quoteForm() {
     const f = $('#q-form'); if (!f) return;
     $('#q-started').value = String(Date.now());
@@ -1390,7 +1215,6 @@
         return;
       }
       if (r && j.error && r.status !== 404) { msg.innerHTML = '<p class="note err">' + esc(j.error) + '</p>'; return; }
-      // online requests unavailable: offer the request as text to send directly
       const c = CFG.contact || {};
       const text = ['Flood line quote request', 'Name: ' + data.full_name + (data.company ? ' (' + data.company + ')' : ''), 'E-mail: ' + data.email, 'Phone: ' + data.phone, 'Site: ' + [data.site_description, data.address].filter(Boolean).join(', '), data.lat != null ? 'Coordinates: ' + data.lat + ', ' + data.lon : '', 'Purpose: ' + data.purpose, 'Flood lines: ' + data.return_periods.join(', '), data.survey ? 'Survey: ' + data.survey : '', data.size_ha ? 'Size: ' + data.size_ha + ' ha' : '', data.deadline ? 'Needed by: ' + data.deadline : '', data.notes ? 'Notes: ' + data.notes : ''].filter(Boolean).join('\n');
       const ways = [c.whatsapp ? `<a class="btn red" target="_blank" rel="noopener" href="https://wa.me/${esc(c.whatsapp.replace(/\D/g, ''))}?text=${encodeURIComponent(text)}">Send on WhatsApp</a>` : '', c.email ? `<span>E-mail: <b>${esc(c.email)}</b></span>` : '', c.phone ? `<span>Phone: <b>${esc(c.phone)}</b></span>` : ''].filter(Boolean).join(' ');
@@ -1398,7 +1222,6 @@
       $('#q-copy').addEventListener('click', () => { const ta = $('#q-copytext'); navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(ta.value).then(() => { $('#q-copy').textContent = 'Copied'; }, () => { ta.select(); }) : ta.select(); });
     });
   }
-
   function contacts() {
     const lg = $('#brand-logo'); if (lg && (CFG.brand || {}).logo) { lg.src = CFG.brand.logo; lg.hidden = false; }
     const c = CFG.contact || {}, el = $('#contacts'); if (!el) return;
@@ -1411,13 +1234,11 @@
     const pr = CFG.pricing || [], pel = $('#pricing');
     if (pel) { if (pr.length) { pel.hidden = false; $('#price-cards').innerHTML = pr.map(p => `<article><h3>${esc(p.name)}</h3><div class="amt">${esc(p.price)}</div><p>${esc(p.text || '')}</p></article>`).join(''); } }
   }
-
   async function probe() {
     if (ARTIFACT) return;
     const z = 12, x = Math.floor(FL.geo.lonToPx(28.05, z) / 256), y = Math.floor(FL.geo.latToPx(-26.1, z) / 256);
     try { await Promise.race([FL.dem.browserTileLoader(z, x, y), new Promise((_, rj) => setTimeout(() => rj({ code: 'timeout' }), 10000))]); liveOK = true; } catch (e) { liveOK = false; }
   }
-
   function boot() {
     hero(); quoteForm(); contacts(); probe();
     $('#chk-form').addEventListener('submit', e => { e.preventDefault(); runCheck(false); });
