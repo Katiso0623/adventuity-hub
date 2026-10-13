@@ -15,7 +15,7 @@ Learner and tutor portal: https://katiso0623.github.io/adventuity-hub/portal.htm
 | `backend/schema.sql` | Database tables, row-level security and functions (Supabase project `sxbpjowkcpysoxurfqzo`). |
 | `backend/functions/` | Edge functions: `signup`, `notify` (push alerts) and `admin-users` (tutor-only password reset and delete). |
 | `tools/` | Build, decrypt and test scripts. |
-| `floodline/` | The Adventuity Floodline website (flood line quotes, free flood check) and the protected Floodline Studio, live at `/floodline/`. Built by the separate Floodline project; only the deploy files are here. The Studio ships encrypted (`floodline/js/studio.bundle.enc`); its key is in Supabase (`floodline_private_assets`, admins only). `build_portal.py` copies this folder into `site/floodline/`. |
+| `floodline/` | The Adventuity Floodline website (flood line quotes, free flood check) and the protected Floodline Studio, live at `/floodline/`. Built by the separate Floodline project; only the deploy files are here. The Studio ships encrypted (`floodline/js/studio.bundle.enc`); its key is in Supabase (`floodline_private_assets`, admins only). `build_portal.py` copies this folder into `site/floodline/`. The public address is https://www.adventuity.co.za (Azure Static Web Apps, deployed from this folder by `.github/workflows/floodline-azure.yml`); the GitHub Pages copy carries canonical links to it. |
 
 ## How it works
 
