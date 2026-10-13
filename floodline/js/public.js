@@ -139,10 +139,18 @@
   }
   const TERRARIUM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
   const tileCache = new Map();
+  const TERRARIUM_ALT = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png';
   function browserTileLoader(z, x, y, url) {
     const key = z + '/' + x + '/' + y;
     if (tileCache.has(key)) return tileCache.get(key);
-    const p = new Promise((resolve, reject) => {
+    const p = loadTerrainTile(z, x, y, url || TERRARIUM_URL).catch(e => url ? Promise.reject(e) : loadTerrainTile(z, x, y, TERRARIUM_ALT));
+    p.catch(() => tileCache.delete(key));
+    tileCache.set(key, p);
+    return p;
+  }
+  function loadTerrainTile(z, x, y, url) {
+    const key = z + '/' + x + '/' + y;
+    return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       const t = setTimeout(() => reject({ code: 'timeout', message: 'Terrain tile ' + key + ' timed out' }), 20000);
@@ -158,11 +166,8 @@
         } catch (e) { reject({ code: 'blocked', message: 'The browser blocked reading terrain pixels (CORS).' }); }
       };
       img.onerror = () => { clearTimeout(t); reject({ code: 'blocked', message: 'Terrain tile ' + key + ' could not be downloaded.' }); };
-      img.src = (url || TERRARIUM_URL).replace('{z}', z).replace('{x}', x).replace('{y}', y);
+      img.src = url.replace('{z}', z).replace('{x}', x).replace('{y}', y);
     });
-    p.catch(() => tileCache.delete(key));
-    tileCache.set(key, p);
-    return p;
   }
   function zoomFor(lat, cell) {
     for (let z = 15; z >= 8; z--) if (G().mercRes(lat, z) >= cell * 0.55) return z;
@@ -708,15 +713,16 @@
     const zf = T.fillDepressions(g), dir = T.d8(g, zf), { acc, order } = T.accumulate(g, dir);
     const thr = 0.25 / (g.dx * g.dx / 1e6), n = g.nx * g.ny;
     const isS = new Uint8Array(n); for (let k = 0; k < n; k++) if (acc[k] >= thr) isS[k] = 1;
-    const drain = new Float32Array(n).fill(NaN), hand = new Float32Array(n).fill(NaN);
+    const drain = new Float32Array(n).fill(NaN), hand = new Float32Array(n).fill(NaN), drainA = new Float32Array(n);
     for (let i = order.length - 1; i >= 0; i--) {
       const k = order[i]; if (g.z[k] !== g.z[k]) continue;
-      if (isS[k]) drain[k] = g.z[k]; else { const t = T.downstream(g, dir, k); drain[k] = t >= 0 && drain[t] === drain[t] ? drain[t] : g.z[k]; }
+      if (isS[k]) { drain[k] = g.z[k]; drainA[k] = acc[k]; }
+      else { const t = T.downstream(g, dir, k); if (t >= 0 && drain[t] === drain[t]) { drain[k] = drain[t]; drainA[k] = drainA[t]; } else drain[k] = g.z[k]; }
       hand[k] = Math.max(0, g.z[k] - drain[k]);
     }
     const snap = T.snapToStream(g, acc, p.E, p.N, 0.25, 2500);
     const siteK = g.cellOf(p.E, p.N);
-    const res = { grid: g, hand, cm, site: p, siteHAND: siteK >= 0 ? hand[siteK] : NaN, siteZ: siteK >= 0 ? g.z[siteK] : NaN };
+    const res = { grid: g, hand, drainA, acc, cm, site: p, siteHAND: siteK >= 0 ? hand[siteK] : NaN, siteZ: siteK >= 0 ? g.z[siteK] : NaN };
     if (snap && !snap.weak) {
       const [sE, sN] = g.EN(snap.k); res.stream = { E: sE, N: sN, dist: snap.dist, areaKm2: snap.areaKm2 };
     }
@@ -738,7 +744,16 @@
     }
     ctx.putImageData(img, 0, 0); return c;
   }
-  FL.screening = { screen, handCanvas };
+  function riskBands(r, opts) {
+    opts = opts || {}; const g = r.grid, n = g.nx * g.ny, minA = (opts.minKm2 || 1) / (g.dx * g.dx / 1e6), G = FL.geom;
+    const band = lim => {
+      const f = new Float32Array(n); for (let k = 0; k < n; k++) { const h = r.hand[k]; f[k] = h === h && r.drainA[k] >= minA ? lim - h : -1; }
+      return G.contour(f, g.nx, g.ny, 0, { pad: true }).filter(l => l.closed && l.pts.length > 5).map(l => G.chaikin(G.toEN(g, l.pts), 2, true)).filter(rg => Math.abs(G.ringArea(rg)) > g.dx * g.dx * 3);
+    };
+    const lines = (r.streams || []).map(l => ({ order: l.order || 1, pts: G.chaikin(l.pts, 2, false) }));
+    return { high: band(2), moderate: band(5), lines };
+  }
+  FL.screening = { screen, handCanvas, riskBands };
 })(typeof window !== 'undefined' ? window : globalThis);
 (function (root) {
   'use strict';
@@ -962,7 +977,7 @@
       });
       const end = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (drag && !drag.moved && pts.size === 0 && this.opts.onClick) { const [E, N] = this.toWorld(e.offsetX, e.offsetY); this.opts.onClick(E, N, e); } drag = null; };
       c.addEventListener('pointerup', end); c.addEventListener('pointercancel', e => { pts.delete(e.pointerId); drag = null; pinch = null; });
-      c.addEventListener('wheel', e => { e.preventDefault(); const f = Math.exp(e.deltaY * 0.0015); const [E, N] = this.toWorld(e.offsetX, e.offsetY); this.view.scale = Math.min(400, Math.max(0.3, this.view.scale * f)); const [E2, N2] = this.toWorld(e.offsetX, e.offsetY); this.view.cx += E - E2; this.view.cy += N - N2; this.render(); }, { passive: false });
+      c.addEventListener('wheel', e => { if (this.opts.cooperative && !(e.ctrlKey || e.metaKey)) { if (this.opts.onWheelHint) this.opts.onWheelHint(); return; } e.preventDefault(); const f = Math.exp(e.deltaY * 0.0015); const [E, N] = this.toWorld(e.offsetX, e.offsetY); this.view.scale = Math.min(400, Math.max(0.3, this.view.scale * f)); const [E2, N2] = this.toWorld(e.offsetX, e.offsetY); this.view.cx += E - E2; this.view.cy += N - N2; this.render(); }, { passive: false });
     }
     zoom(f) { this.view.scale = Math.min(400, Math.max(0.3, this.view.scale * f)); this.render(); }
     setData(R) {
@@ -1088,7 +1103,7 @@
       ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(L >= 1000 ? (L / 1000) + ' km' : L + ' m', x + px + 6, y + 7);
     }
     _north(ctx) {
-      const x = this.w - 30, y = 44; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(x, y, 18, 0, 2 * Math.PI); ctx.fill();
+      const x = this.w - 30, y = this.opts.northBottom ? this.h - 56 : 44; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(x, y, 18, 0, 2 * Math.PI); ctx.fill();
       ctx.fillStyle = '#1c3246'; ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 6, y + 8); ctx.lineTo(x, y + 4); ctx.lineTo(x - 6, y + 8); ctx.closePath(); ctx.fill();
       ctx.font = '700 10px "Barlow Condensed", "Arial Narrow", sans-serif'; ctx.textAlign = 'center'; ctx.fillText('N', x, y + 16);
     }
@@ -1170,7 +1185,7 @@
       const p = FL.geo.parseLatLon($('#chk-coord').value);
       if (!p) { findPlace($('#chk-coord').value); return; }
       $('#chk-places').hidden = true;
-      if (liveOK === false) { out.innerHTML = `<p class="note err">${ARTIFACT ? 'This preview cannot download map data. The check works on the published website.' : 'Terrain data could not be downloaded right now. Please try again shortly, or request a quote below.'}</p><button class="btn" type="button" id="chk-demo2">Try it on the demonstration site</button>`; $('#chk-demo2').addEventListener('click', () => runCheck(true)); return; }
+      if (ARTIFACT) { out.innerHTML = '<p class="note err">This preview cannot download map data. The check works on the published website.</p><button class="btn" type="button" id="chk-demo2">Try it on the demonstration site</button>'; $('#chk-demo2').addEventListener('click', () => runCheck(true)); return; }
       prov = FL.dem.liveProvider(FL.geo.loCM(p.lon)); site = p;
     }
     btn.disabled = true; out.innerHTML = '<p class="note">Analysing the terrain around the site…</p>';
@@ -1186,20 +1201,78 @@
         if (!useDemo) { $('#q-coord').value = site.lat.toFixed(6) + ', ' + site.lon.toFixed(6); if (lastPlace && $('#q-address') && !$('#q-address').value) $('#q-address').value = lastPlace.slice(0, 300); }
         $('#q-notes').value = ($('#q-notes').value ? $('#q-notes').value + '\n' : '') + 'Free check: risk ' + lv[0] + (r.stream ? ', watercourse ' + n(r.stream.dist, 0) + ' m away, catchment ' + n(r.stream.areaKm2, 1) + ' km²' : '') + '.';
       });
-      const box = $('#chk-map'); box.hidden = false;
-      if (!checkMap) { checkMap = new FL.MapView(box, {}); }
-      const g = r.grid; const fake = { coarse: g, fine: null, catchment: { streams: { lines: r.streams }, outline: [] }, maps: {}, site: r.site, cm: r.cm };
-      Object.assign(checkMap.layers, { contours: true, hillshade: true, streams: true, catchment: false, flood50: false, flood100: false, xs: false, centreline: false, hand: true });
-      checkMap.cache = {}; checkMap.data = fake; checkMap.cache.hsCoarse = FL.mapfx.hillshadeCanvas(g); checkMap.cache.ctCoarse = FL.mapfx.contours(g, 5, 5);
-      checkMap.setHand({ g, canvas: FL.screening.handCanvas(r) });
-      checkMap.site = { E: r.site.E, N: r.site.N }; checkMap.siteLabel = 'SITE';
-      checkMap.view.cx = r.site.E; checkMap.view.cy = r.site.N; checkMap.view.scale = 1600 / Math.max(300, box.clientWidth) * 2.2; checkMap.resize();
-      $('#chk-legend').hidden = false;
+      showCheckMap(r, !!useDemo);
+      if (!useDemo) liveOK = true;
     } catch (e) {
       console.error(e);
-      if (e && e.code === 'blocked') liveOK = false;
-      out.innerHTML = '<p class="note err">' + esc(e.code === 'blocked' ? 'Terrain data could not be downloaded. Please try again later, or request a quote below.' : (e.message || 'The check could not be completed.')) + '</p>';
+      out.innerHTML = '<p class="note err">' + esc(e && e.code === 'blocked' ? 'The terrain data for this site could not be downloaded. Check your internet connection and try again, or request a quote below.' : ((e && e.message) || 'The check could not be completed.')) + '</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn red" type="button" id="chk-retry">Try again</button><button class="btn" type="button" id="chk-demo3">Try the demonstration site</button></div>';
+      $('#chk-retry').addEventListener('click', () => runCheck(false)); $('#chk-demo3').addEventListener('click', () => runCheck(true));
     } finally { btn.disabled = false; }
+  }
+  let checkBands = null, checkRes = null, checkBase = 'photo', hintT = null;
+  function showCheckMap(r, demo) {
+    const box = $('#chk-map'); box.hidden = false; const ph = $('#chk-ph'); if (ph) ph.hidden = true;
+    if (!checkMap) {
+      checkMap = new FL.MapView(box, { cooperative: true, northBottom: true, onWheelHint: () => { const h = $('#chk-hint'); h.hidden = false; clearTimeout(hintT); hintT = setTimeout(() => { h.hidden = true; }, 1600); } });
+      checkMap.overlays = [(ctx, m) => drawCheck(ctx, m)];
+      $$('[data-base]', box).forEach(b => b.addEventListener('click', () => { if (b.disabled) return; checkBase = b.dataset.base; applyBase(); }));
+      $$('[data-z]', box).forEach(b => b.addEventListener('click', () => { if (b.dataset.z === 'in') checkMap.zoom(1 / 1.6); else if (b.dataset.z === 'out') checkMap.zoom(1.6); else fitCheck(); }));
+    }
+    checkRes = r; checkBands = FL.screening.riskBands(r, { minKm2: 0.5 });
+    const g = r.grid;
+    checkMap.data = { coarse: g, fine: null, catchment: { streams: { lines: [] }, outline: [] }, maps: {}, site: r.site, cm: r.cm };
+    checkMap.cache = { hsCoarse: FL.mapfx.hillshadeCanvas(g), ctCoarse: FL.mapfx.contours(g, 5, 5) }; checkMap.hand = null;
+    Object.assign(checkMap.layers, { streams: false, catchment: false, flood50: false, flood100: false, xs: false, centreline: false, hand: false, site: false, depth: false, dyn: false });
+    checkBase = demo ? 'terrain' : 'photo';
+    const sat = $('[data-base=photo]', box); sat.disabled = demo; sat.title = demo ? 'The demonstration valley is synthetic, so there is no photo of it' : '';
+    $('#chk-title').textContent = demo ? 'Flood risk map · demonstration valley' : 'Flood risk map · your site';
+    applyBase(); fitCheck();
+    if (window.innerWidth < 900) setTimeout(() => box.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }
+  function applyBase() {
+    const photo = checkBase === 'photo';
+    Object.assign(checkMap.layers, { imagery: photo, hillshade: !photo, contours: !photo });
+    $$('#chk-map [data-base]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.base === checkBase)));
+    const narrow = $('#chk-map').clientWidth < 560;
+    $('#chk-attr').textContent = (photo ? (narrow ? 'Imagery © Esri, Maxar · ' : 'Imagery: Esri, Maxar, Earthstar Geographics · ') : '') + (lastCheck && lastCheck.demo ? 'Demonstration terrain' : (narrow ? 'Terrain © AWS (SRTM)' : 'Terrain: AWS Terrain Tiles (Mapzen; SRTM, NASA)'));
+    checkMap.render();
+  }
+  function fitCheck() {
+    const r = checkRes; if (!r) return; const box = $('#chk-map'), d = r.stream ? r.stream.dist : 500;
+    const W = Math.min(2600, Math.max(900, 3 * d + 600));
+    checkMap.view.cx = r.stream ? (r.site.E * 0.65 + r.stream.E * 0.35) : r.site.E; checkMap.view.cy = r.stream ? (r.site.N * 0.65 + r.stream.N * 0.35) : r.site.N;
+    checkMap.view.scale = W / Math.max(300, box.clientWidth); checkMap.resize();
+  }
+  function drawCheck(ctx, m) {
+    const b = checkBands, r = checkRes; if (!b || !r) return;
+    const ring = rings => { ctx.beginPath(); for (const rg of rings) { let p = m.toScreen(rg[0][0], rg[0][1]); ctx.moveTo(p[0], p[1]); for (let i = 1; i < rg.length; i++) { p = m.toScreen(rg[i][0], rg[i][1]); ctx.lineTo(p[0], p[1]); } ctx.closePath(); } };
+    const photo = m.layers.imagery;
+    ring(b.moderate); ctx.fillStyle = photo ? 'rgba(255,176,46,0.30)' : 'rgba(240,150,40,0.26)'; ctx.fill('evenodd'); ctx.setLineDash([7, 4]); ctx.lineWidth = 1.6; ctx.strokeStyle = photo ? 'rgba(255,200,90,0.95)' : 'rgba(205,120,20,0.9)'; ctx.stroke(); ctx.setLineDash([]);
+    ring(b.high); ctx.fillStyle = photo ? 'rgba(235,48,38,0.42)' : 'rgba(200,54,43,0.36)'; ctx.fill('evenodd'); ctx.lineWidth = 2.2; ctx.strokeStyle = photo ? '#ff5a4a' : '#c8362b'; ctx.stroke();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const l of b.lines) {
+      const w = 1.3 + 1.1 * Math.min(4, l.order); ctx.beginPath(); let p = m.toScreen(l.pts[0][0], l.pts[0][1]); ctx.moveTo(p[0], p[1]); for (let i = 1; i < l.pts.length; i++) { p = m.toScreen(l.pts[i][0], l.pts[i][1]); ctx.lineTo(p[0], p[1]); }
+      ctx.strokeStyle = photo ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.8)'; ctx.lineWidth = w + 2.4; ctx.stroke(); ctx.strokeStyle = '#2b8cff'; ctx.lineWidth = w; ctx.stroke();
+    }
+    const [sx, sy] = m.toScreen(r.site.E, r.site.N);
+    if (r.stream && r.stream.dist > 5) {
+      const [wx, wy] = m.toScreen(r.stream.E, r.stream.N);
+      ctx.setLineDash([5, 5]); ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(wx, wy); ctx.stroke(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#2b8cff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(wx, wy, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+      const near = Math.hypot(wx - sx, wy - sy) < 130;
+      pill(ctx, near ? sx : (sx + wx) / 2, near ? sy + 20 : (sy + wy) / 2, Math.round(r.stream.dist) + ' m to the watercourse', '#17222c', '#fff');
+    }
+    ctx.save(); ctx.translate(sx, sy); ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-4, -9, -12, -14, -12, -24); ctx.arc(0, -24, 12, Math.PI, 0); ctx.bezierCurveTo(12, -14, 4, -9, 0, 0); ctx.closePath();
+    ctx.fillStyle = '#7a2b8f'; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -24, 4.5, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+    pill(ctx, sx, sy - 50, lastCheck && lastCheck.demo ? 'DEMO SITE' : 'YOUR SITE', '#fff', '#7a2b8f');
+  }
+  function pill(ctx, x, y, text, bg, fg) {
+    ctx.font = '700 12px "Barlow Condensed", "Arial Narrow", sans-serif'; const w = ctx.measureText(text).width + 14;
+    ctx.fillStyle = bg; ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1; ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x - w / 2, y - 10, w, 20, 10); else ctx.rect(x - w / 2, y - 10, w, 20); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + 0.5);
   }
   async function findPlace(text) {
     const out = $('#chk-out'), box = $('#chk-places'); text = String(text || '').trim();
