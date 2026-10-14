@@ -1,5 +1,7 @@
 /* Adventuity Floodline — site configuration. Edit these values, then re-upload the site. */
 window.FL_CONFIG = {
+  // 'za' for www.adventuity.co.za, 'intl' for www.adventuity.com (set by the build)
+  market: 'za',
   brand: {
     company: 'Adventuity (Pty) Ltd',
     short: 'Adventuity',
@@ -14,6 +16,8 @@ window.FL_CONFIG = {
     endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-quote',
     key: 'sb_publishable_K6kU-7Ghj5kPH-6cKP3BJg_8Htk1mmp',
   },
+  // Online payment of accepted quotes (Yoco checkout through the floodline-pay function).
+  payments: { endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-pay' },
   // Used by the Studio's "Quote requests" tab (sign in with your Adventuity portal admin account).
   supabase: { url: 'https://sxbpjowkcpysoxurfqzo.supabase.co', key: 'sb_publishable_K6kU-7Ghj5kPH-6cKP3BJg_8Htk1mmp' },
   // Optional pricing cards on the public site. Leave empty to show "quoted per site".
@@ -24,5 +28,5 @@ window.FL_CONFIG = {
   // The Studio is shipped encrypted; the key is released only to signed-in administrators (Supabase row-level security).
   // Satellite imagery for the map and the plan drawing (Esri World Imagery). Add an ArcGIS Location Platform key for commercial use.
   imagery: { esriKey: '' },
-  studio: { bundle: 'js/studio.bundle.enc?v=20261013151629', passcodeSha256: '' },
+  studio: { bundle: 'js/studio.bundle.enc?v=20261014111737', passcodeSha256: '' },
 };

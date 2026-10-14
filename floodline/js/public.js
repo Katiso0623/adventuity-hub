@@ -82,16 +82,38 @@
     const nums = s.match(/-?\d+(?:\.\d+)?/g);
     if (nums && nums.length === 2) {
       let a = parseFloat(nums[0]), b = parseFloat(nums[1]);
-      if (Math.abs(a) > Math.abs(b) && Math.abs(a) <= 180 && Math.abs(b) <= 90) { const t = a; a = b; b = t; }
-      if (a > 0 && a < 36 && b > 15 && b < 34) a = -a;
+      const south = !!(FL.geo && FL.geo.assumeSouth);
+      if ((Math.abs(a) > 90 && Math.abs(b) <= 90) || (south && a > 15 && a < 34 && b < -21 && b > -36)) { const t = a; a = b; b = t; }
+      if (south && a > 0 && a < 36 && b > 15 && b < 34) a = -a;
       return valid(a, b);
     }
     return null;
     function valid(lat, lon) { return (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) ? { lat, lon } : null; }
   }
+  const ZA_POLY = [[16.3, -28.6], [17.4, -28.7], [18.2, -28.9], [19.0, -28.9], [20.0, -28.4], [20.0, -24.75], [20.8, -26.8], [22.6, -26.0], [23.5, -25.6], [25.2, -25.7], [26.0, -24.7], [26.9, -23.6], [28.0, -22.6], [29.4, -22.2], [31.3, -22.4], [31.9, -24.0], [32.0, -25.0], [32.95, -26.85], [32.6, -28.6], [31.6, -29.9], [30.3, -31.4], [28.4, -32.9], [26.6, -34.0], [25.0, -34.2], [23.0, -34.2], [20.0, -35.0], [18.3, -34.6], [17.8, -33.3], [17.6, -32.7], [17.0, -31.0]];
+  function inPoly(x, y, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+  function region(lat, lon) { return (lat == null || lon == null) ? 'za' : inPoly(lon, lat, ZA_POLY) ? 'za' : 'intl'; }
+  function siteCM(lat, lon, reg) { return (reg || region(lat, lon)) === 'za' ? loCM(lon) : utmZone(lon) * 6 - 183; }
+  function crsInfo(reg, cm, lat) {
+    if (reg !== 'intl') return { kind: 'lo', cm };
+    return { kind: 'utm', cm, zone: Math.round((cm + 183) / 6), south: lat < 0 };
+  }
+  function crsOf(info) {
+    const c = info && info.kind ? info : { kind: 'lo', cm: info && info.cm != null ? info.cm : 29 };
+    if (c.kind !== 'utm') {
+      return { kind: 'lo', cm: c.cm, label: 'Hartebeesthoek94 Lo' + c.cm, short: 'Lo' + c.cm, datum: 'HARTEBEESTHOEK94', zoneName: 'Lo' + c.cm, ax: ['Y', 'X'],
+        note: 'Y positive west, X positive south', cadNote: 'X = −Y(Lo), Y = −X(Lo), metres', out: (E, N) => [-E, -N], inv: (a, b) => [-a, -b], cad: (E, N) => [E, N] };
+    }
+    const k = 0.9996, FN = c.south ? 10000000 : 0, hemi = c.south ? 'S' : 'N';
+    return { kind: 'utm', cm: c.cm, zone: c.zone, south: c.south, label: 'WGS 84 / UTM zone ' + c.zone + hemi, short: 'UTM ' + c.zone + hemi, datum: 'WGS84', zoneName: 'UTM ' + c.zone + hemi, ax: ['E', 'N'],
+      note: 'Easting and northing in metres', cadNote: 'X = easting, Y = northing (UTM zone ' + c.zone + hemi + '), metres',
+      out: (E, N) => [500000 + k * E, FN + k * N], inv: (a, b) => [(a - 500000) / k, (b - FN) / k], cad: (E, N) => [500000 + k * E, FN + k * N] };
+  }
+  function fmtLatLon(lat, lon, d) { d = d == null ? 5 : d; return Math.abs(lat).toFixed(d) + '° ' + (lat < 0 ? 'S' : 'N') + ', ' + Math.abs(lon).toFixed(d) + '° ' + (lon < 0 ? 'W' : 'E'); }
   FL.geo = {
     tmForward, tmInverse, loCM, toLoEN, fromLoEN, loYX, utmZone, toUTM, fromUTM,
     lonToPx, latToPx, pxToLon, pxToLat, terrariumDecode, mercRes, fmtDMS, parseLatLon, D2R, R2D,
+    region, siteCM, crsInfo, crsOf, fmtLatLon, inPoly, ZA_POLY, assumeSouth: true,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 (function (root) {
@@ -175,7 +197,7 @@
   }
   async function fetchLiveTerrain(opts) {
     const geo = G();
-    const cm = opts.cm != null ? opts.cm : geo.loCM(opts.lon);
+    const cm = opts.cm != null ? opts.cm : geo.siteCM(opts.lat, opts.lon);
     const c = (opts.cE != null) ? { E: opts.cE, N: opts.cN } : geo.toLoEN(opts.lat, opts.lon, cm);
     const cell = opts.cell, halfW = opts.halfW, halfH = opts.halfH || opts.halfW;
     const nx = Math.round(2 * halfW / cell) + 1, ny = Math.round(2 * halfH / cell) + 1;
@@ -274,7 +296,8 @@
   function crsFromEpsg(code) {
     if (!code) return null;
     if (code === 4326 || code === 4148) return { kind: 'geo' };
-    if (code >= 32733 && code <= 32736) return { kind: 'utm', zone: code - 32700 };
+    if (code >= 32701 && code <= 32760) return { kind: 'utm', zone: code - 32700, south: true };
+    if (code >= 32601 && code <= 32660) return { kind: 'utm', zone: code - 32600, south: false };
     if (code >= 2046 && code <= 2055) return { kind: 'lo-survey', cm: 15 + 2 * (code - 2046), note: 'Hartebeesthoek94 Lo' + (15 + 2 * (code - 2046)) + ' (EPSG:' + code + ')' };
     if (code >= 22275 && code <= 22293) return { kind: 'lo-survey', cm: 15 + (code - 22275), warn: 'Cape datum (pre-1999). Heights and positions may be offset from Hartebeesthoek94.' };
     return { kind: 'unknown', epsg: code };
@@ -293,7 +316,7 @@
     const geo = G();
     switch (crs.kind) {
       case 'geo': return (x, y) => ({ lat: y, lon: x });
-      case 'utm': return (x, y) => geo.fromUTM(x, y, crs.zone, true);
+      case 'utm': return (x, y) => geo.fromUTM(x, y, crs.zone, crs.south !== false);
       case 'lo-gis': return (x, y) => geo.fromLoEN(x, y, crs.cm);
       case 'lo-survey': return (x, y) => geo.fromLoEN(-x, -y, crs.cm);
       default: throw new Error('Unknown coordinate system');
@@ -706,7 +729,7 @@
   'use strict';
   const FL = root.FL = root.FL || {};
   async function screen(provider, site, onProgress) {
-    const T = FL.terrain, cm = provider.cm != null ? provider.cm : FL.geo.loCM(site.lon);
+    const T = FL.terrain, cm = provider.cm != null ? provider.cm : FL.geo.siteCM(site.lat, site.lon);
     const p = site.E != null ? site : Object.assign({}, site, FL.geo.toLoEN(site.lat, site.lon, cm));
     const g = await provider.getGrid({ cE: p.E, cN: p.N, halfW: 3500, cell: 30, onProgress });
     FL.dem.patchHoles(g, 3);
@@ -1116,17 +1139,26 @@
   const FL = root.FL = root.FL || {};
   const URL_ = 'https://nominatim.openstreetmap.org/search';
   function timeout(ms) { return new Promise((_, rj) => setTimeout(() => rj(new Error('The search took too long. Try again.')), ms)); }
-  async function search(q, opts) {
-    q = String(q || '').trim(); if (q.length < 2) return [];
-    const p = new URLSearchParams({ q, format: 'jsonv2', countrycodes: (opts && opts.countries) || 'za', limit: String((opts && opts.limit) || 8), addressdetails: '0', 'accept-language': 'en' });
+  async function query(q, countries, limit) {
+    const p = new URLSearchParams({ q, format: 'jsonv2', limit: String(limit || 8), addressdetails: '0', 'accept-language': 'en' });
+    if (countries) p.set('countrycodes', countries);
     const r = await Promise.race([fetch(URL_ + '?' + p.toString(), { headers: { Accept: 'application/json' } }), timeout(12000)]);
     if (!r.ok) throw new Error('Place search is not available right now (' + r.status + ').');
     const j = await r.json();
     return (Array.isArray(j) ? j : []).map(x => {
       const parts = String(x.display_name || '').split(',').map(s => s.trim()).filter(Boolean);
       const bb = Array.isArray(x.boundingbox) && x.boundingbox.length === 4 ? x.boundingbox.map(Number) : null;
-      return { name: parts[0] || q, detail: parts.slice(1, 4).join(', '), lat: +x.lat, lon: +x.lon, bbox: bb, kind: String(x.type || x.category || '').replace(/_/g, ' ') };
+      return { name: parts[0] || q, detail: parts.slice(1, 4).concat(parts.length > 4 ? [parts[parts.length - 1]] : []).join(', '), lat: +x.lat, lon: +x.lon, bbox: bb, kind: String(x.type || x.category || '').replace(/_/g, ' ') };
     }).filter(x => x.lat === x.lat && x.lon === x.lon);
+  }
+  async function search(q, opts) {
+    q = String(q || '').trim(); if (q.length < 2) return [];
+    const o = opts || {}, limit = o.limit || 8, intl = ((root.FL_CONFIG || {}).market === 'intl');
+    if (o.countries != null) return query(q, o.countries, limit);
+    if (intl) return query(q, '', limit);
+    const local = await query(q, 'za', limit);
+    if (local.length) return local;
+    return query(q, '', limit);
   }
   FL.places = { search };
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1137,6 +1169,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n = (v, d) => (v == null || v !== v) ? '—' : Number(v).toFixed(d == null ? 1 : d);
   let demoR = null, liveOK = ARTIFACT ? false : null;
+  if (CFG.market === 'intl' && FL.geo) FL.geo.assumeSouth = false;
   async function hero() {
     const box = $('#hero-map'); if (!box) return;
     if (!FL.pipeline) return heroStatic(box);
@@ -1186,7 +1219,7 @@
       if (!p) { findPlace($('#chk-coord').value); return; }
       $('#chk-places').hidden = true;
       if (ARTIFACT) { out.innerHTML = '<p class="note err">This preview cannot download map data. The check works on the published website.</p><button class="btn" type="button" id="chk-demo2">Try it on the demonstration site</button>'; $('#chk-demo2').addEventListener('click', () => runCheck(true)); return; }
-      prov = FL.dem.liveProvider(FL.geo.loCM(p.lon)); site = p;
+      prov = FL.dem.liveProvider(FL.geo.siteCM(p.lat, p.lon)); site = p;
     }
     btn.disabled = true; out.innerHTML = '<p class="note">Analysing the terrain around the site…</p>';
     try {
@@ -1276,7 +1309,7 @@
   }
   async function findPlace(text) {
     const out = $('#chk-out'), box = $('#chk-places'); text = String(text || '').trim();
-    if (text.length < 2) { out.innerHTML = '<p class="note err">Type your town, suburb or street address, or paste coordinates such as -26.10512, 28.05741.</p>'; return; }
+    if (text.length < 2) { out.innerHTML = '<p class="note err">Type your town, suburb or street address, or paste coordinates such as ' + (CFG.market === 'intl' ? '-15.38720, 28.32280' : '-26.10512, 28.05741') + '.</p>'; return; }
     if (!FL.places) return;
     box.hidden = false; box.innerHTML = '<p class="note">Searching…</p>'; out.innerHTML = '';
     try {

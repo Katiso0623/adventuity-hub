@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /studio.html
+Disallow: /pay.html
+Disallow: /js/studio.bundle.enc
+
+Sitemap: https://www.adventuity.com/sitemap.xml

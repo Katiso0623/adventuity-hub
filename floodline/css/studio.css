@@ -49,7 +49,7 @@ details.sec > summary .tag { margin-left: auto; font: 500 12px var(--f-mono); le
 .fld > label, .lbl { font-size: 12.5px; font-weight: 600; color: var(--muted); }
 .fld .help { font-size: 12px; color: var(--muted); }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; } .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-input[type=text], input[type=number], input[type=date], select, textarea { width: 100%; font: 14px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; min-width: 0; }
+input[type=text], input[type=email], input[type=number], input[type=date], select, textarea { width: 100%; font: 14px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; min-width: 0; }
 input[type=number], .mono { font-family: var(--f-mono); font-size: 13px; }
 textarea { min-height: 80px; font-family: var(--f-mono); font-size: 12.5px; }
 .unit { position: relative; } .unit input { padding-right: 46px; } .unit span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: 12px var(--f-mono); color: var(--muted); pointer-events: none; }
@@ -172,3 +172,12 @@ table.t td.bad { color: var(--bad); font-weight: 600; }
 .map-earth { position: absolute; right: 10px; top: 190px; display: grid; gap: 4px; justify-items: end; }
 .map-earth button { border: 1px solid #cfd6dc; background: #fff; color: #17222c; border-radius: 6px; padding: 5px 9px; font: 600 12px var(--f-body); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .map-earth button:hover { border-color: #5a6772; }
+/* online payments in the quote inbox */
+.badge.ok { background: color-mix(in srgb, var(--ok) 18%, var(--panel)); color: var(--ok); }
+.inv-list { display: grid; gap: 4px; margin-top: 4px; }
+.inv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 13px; }
+.inv b { font-family: var(--f-mono); }
+.pay-form { margin-top: 6px; display: grid; gap: 6px; }
+.pay-form h4 { margin: 0; }
+.pay-form input[type=text], .pay-form input[type=email], .pay-form input[type=number] { width: 100%; }
+#pay-status .btn { margin-left: 6px; }
