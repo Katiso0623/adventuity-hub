@@ -18,6 +18,8 @@ window.FL_CONFIG = {
   },
   // Online payment of accepted quotes (Yoco checkout through the floodline-pay function).
   payments: { endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-pay' },
+  // Public rainfall and river-flow records near a site (floodline-data function, refreshed weekly).
+  data: { endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-data' },
   // Used by the Studio's "Quote requests" tab (sign in with your Adventuity portal admin account).
   supabase: { url: 'https://sxbpjowkcpysoxurfqzo.supabase.co', key: 'sb_publishable_K6kU-7Ghj5kPH-6cKP3BJg_8Htk1mmp' },
   // Optional pricing cards on the public site. Leave empty to show "quoted per site".
@@ -28,5 +30,5 @@ window.FL_CONFIG = {
   // The Studio is shipped encrypted; the key is released only to signed-in administrators (Supabase row-level security).
   // Satellite imagery for the map and the plan drawing (Esri World Imagery). Add an ArcGIS Location Platform key for commercial use.
   imagery: { esriKey: '' },
-  studio: { bundle: 'js/studio.bundle.enc?v=20261014111737', passcodeSha256: '' },
+  studio: { bundle: 'js/studio.bundle.enc?v=20261014221132', passcodeSha256: '' },
 };

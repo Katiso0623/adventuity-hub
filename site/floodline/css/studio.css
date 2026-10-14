@@ -181,3 +181,12 @@ table.t td.bad { color: var(--bad); font-weight: 600; }
 .pay-form h4 { margin: 0; }
 .pay-form input[type=text], .pay-form input[type=email], .pay-form input[type=number] { width: 100%; }
 #pay-status .btn { margin-left: 6px; }
+/* recorded rainfall and flow gauges */
+.rec-box { border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; margin: 8px 0; display: grid; gap: 6px; background: var(--bg); min-width: 0; }
+.rec-box > *, .rec-ad > * { min-width: 0; }
+.rec-box .tbl-wrap { overflow-x: auto; max-width: 100%; }
+.rec-box textarea { min-height: 90px; }
+.rec-t td, .rec-t th { font-size: 11.5px; padding: 3px 5px; vertical-align: top; }
+.rec-t td .help { margin: 0; font-size: 10.5px; }
+.rec-t input[type=checkbox] { margin: 2px 0 0; }
+.rec-ad { border-top: 1px dashed var(--line); padding-top: 6px; display: grid; gap: 4px; font-size: 12px; }
