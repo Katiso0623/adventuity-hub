@@ -35,13 +35,14 @@
 
   ADV.views.messages = function () {
     if (!state.isAdmin) {
-      return '<div class="stack"><div><span class="eyebrow">Messages</span><h1>Message your tutor</h1><p class="small muted">Ask about a lesson, a payment or a question you are stuck on. You get a notification when the tutor replies.</p></div>' +
+      const head = state.isTutor ? '<h1>Message Adventuity</h1><p class="small muted">Questions about your lessons, learners or schedule go to the director. You get a notification when they reply.</p>' : '<h1>Message your tutor</h1><p class="small muted">Ask about a lesson, a payment or a question you are stuck on. You get a notification when the tutor replies.</p>';
+      return '<div class="stack"><div><span class="eyebrow">Messages</span>' + head + '</div>' +
         '<div class="card chat"><div class="thread" id="thread">' + bubbles() + '</div>' + composer(sb.user.id) + '</div></div>';
     }
     const cur = state.thread;
     const learners = (state.learners || []).filter((l) => l.role !== 'admin');
     const items = (state.inbox || []).map((m) => { const n = (state.unreadBy || {})[m.learner_id] || 0; return '<button class="conv' + (cur === m.learner_id ? ' on' : '') + '" data-action="thread" data-id="' + m.learner_id + '"><span class="conv-top"><b>' + esc(nameOf(m.learner_id)) + '</b><span class="small muted">' + esc(when(m.created_at)) + '</span></span><span class="small muted conv-last">' + (m.sender === sb.user.id ? 'You: ' : '') + esc(m.body.slice(0, 80)) + '</span>' + (n ? '<i class="badge">' + n + '</i>' : '') + '</button>'; }).join('');
-    const pick = '<div class="field"><label for="m-new">Start a conversation</label><select id="m-new"><option value="">Choose a learner…</option>' + learners.map((l) => '<option value="' + l.id + '">' + esc(l.full_name || l.email) + '</option>').join('') + '</select></div>';
+    const pick = '<div class="field"><label for="m-new">Start a conversation</label><select id="m-new"><option value="">Choose a learner…</option>' + learners.map((l) => '<option value="' + l.id + '">' + esc((l.full_name || l.email) + (l.role === 'tutor' ? ' (tutor)' : '')) + '</option>').join('') + '</select></div>';
     const l = learners.find((x) => x.id === cur);
     return '<div class="stack"><div><span class="eyebrow">Messages</span><h1>Messages</h1></div><div class="inbox"><div class="card inbox-list">' + pick + '<div class="stack" style="gap:6px;margin-top:10px">' + (items || '<p class="small muted">No conversations yet.</p>') + '</div></div>' +
       '<div class="card chat">' + (cur ? '<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:10px"><div><b>' + esc(nameOf(cur)) + '</b><div class="small muted">' + esc(l ? [l.phone, l.school].filter(Boolean).join(' · ') : '') + '</div></div>' + (l && l.phone ? '<a class="btn sm" href="' + esc(ADV.wa(l.phone)) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + '</div><div class="thread" id="thread">' + bubbles() + '</div>' + composer(cur) : '<p class="muted" style="padding:24px 0;text-align:center">Choose a conversation.</p>') + '</div></div></div>';
@@ -93,7 +94,11 @@
     const before = new Map(state.bookings.map((b) => [b.id, b.status]));
     await ADV.loadBookings(); const unreadBefore = state.badges.messages || 0; await loadUnread();
     if (state.isAdmin && ADV.adminTick) { try { await ADV.adminTick(state.ticked); } catch (e) { /* offline */ } }
-    if (state.isAdmin) {
+    if (state.isTutor) {
+      const fresh = state.bookings.filter((b) => b.status === 'accepted' && !before.has(b.id) && new Date(b.ends_at) > ADV.now());
+      if (state.ticked && fresh.length) ADV.alert(fresh.length === 1 ? 'New lesson assigned' : fresh.length + ' new lessons assigned', fresh.map((b) => (b.learner_name || 'Learner') + ' · ' + fmt.date(b.starts_at) + ' ' + fmt.time(b.starts_at)).join('; '));
+      state.badges.tdash = state.bookings.filter((b) => b.status === 'accepted' && ADV.joinWindow(b).open).length;
+    } else if (state.isAdmin) {
       const pend = state.bookings.filter((b) => b.status === 'pending' && new Date(b.starts_at) > ADV.now());
       state.badges.dash = pend.length;
       const fresh = pend.filter((b) => !before.has(b.id));
@@ -103,7 +108,7 @@
       if (state.ticked) changed.forEach((b) => ADV.alert(b.status === 'accepted' ? 'Lesson confirmed ✔' : 'Booking not accepted', fmt.date(b.starts_at) + ' ' + fmt.time(b.starts_at)));
       state.badges.lessons = state.bookings.filter((b) => b.status === 'accepted' && ADV.joinWindow(b).open).length;
     }
-    if (state.ticked && (state.badges.messages || 0) > unreadBefore && state.tab !== 'messages') ADV.alert('New message', state.isAdmin ? 'A learner sent you a message' : 'Your tutor replied');
+    if (state.ticked && (state.badges.messages || 0) > unreadBefore && state.tab !== 'messages') ADV.alert('New message', state.isAdmin ? 'You have a new message' : state.isTutor ? 'Adventuity replied' : 'Your tutor replied');
     if (state.tab === 'messages' && !state.topic && $('#thread')) {
       const id = state.isAdmin ? state.thread : sb.user.id;
       if (id) { await loadThread(state.isAdmin ? id : null); const th = $('#thread'); if (th) { th.innerHTML = bubbles(); th.scrollTop = th.scrollHeight; } try { await sb.rpc('mark_read', { thread: id }); } catch (e) { /* ignore */ } await loadUnread(); }
@@ -111,7 +116,7 @@
       ADV.badges(); state.ticked = true; return;
     }
     state.ticked = true;
-    const busy = document.querySelector('input:focus,textarea:focus,select:focus,.overlay') || (ADV.pen && ADV.pen.active);
+    const busy = document.querySelector('input:focus,textarea:focus,select:focus,.overlay') || (ADV.pen && ADV.pen.active) || state.tab === 'board';
     if (!busy) { const y = window.scrollY; ADV.render(); window.scrollTo(0, y); } else ADV.badges();
   }
   ADV.startPolling = function () { clearInterval(timer); tick(); timer = setInterval(() => { if (document.visibilityState === 'visible') tick(); }, state.isAdmin ? 30000 : 60000); };

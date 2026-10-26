@@ -1,7 +1,8 @@
 // Sends push notifications about a booking.
 // POST { booking_id, event }   event: requested | cancelled | pop | accepted | declined | paid | updated | test
 // POST { event: 'message', learner_id }   a new chat message in that learner's conversation
-// Learner events (requested, cancelled, pop, their own messages) notify the tutor; tutor events notify the learner.
+// Learner events (requested, cancelled, pop, their own messages) notify the admin; admin events notify the learner
+// and, for lessons another tutor teaches, that tutor too. A tutor's 'delivered' event notifies the admin.
 // verify_jwt is off because the project uses publishable keys; the caller's session is checked below via /auth/v1/user.
 import webpush from 'npm:web-push@3.6.7';
 
@@ -35,6 +36,7 @@ Deno.serve(async (req) => {
     const profs = await (await admin('/rest/v1/profiles?select=id,role,full_name&id=eq.' + user.id)).json();
     const caller = profs[0]; if (!caller) return json({ error: 'No profile' }, 403);
     let recipients: string[] = []; let title = ''; let body = ''; let tag = 'booking';
+    const extra: { to: string[]; title: string; body: string; url: string }[] = [];
     const site = cfg.site_url || '';
     if (event === 'test') {
       recipients = [user.id]; title = 'Notifications are on'; body = 'You will be alerted here about lessons and bookings.'; tag = 'test';
@@ -43,7 +45,7 @@ Deno.serve(async (req) => {
       if (!isAdmin && learner_id !== user.id) return json({ error: 'Not your conversation' }, 403);
       const last = await (await admin('/rest/v1/messages?select=body&order=created_at.desc&limit=1&learner_id=eq.' + learner_id + '&sender=eq.' + user.id)).json();
       const text = (last[0] && last[0].body) || '';
-      if (isAdmin) { recipients = [learner_id]; title = 'New message from your tutor'; }
+      if (isAdmin) { recipients = [learner_id]; const r = await (await admin('/rest/v1/profiles?select=role&id=eq.' + learner_id)).json(); title = r[0] && r[0].role === 'tutor' ? 'New message from Adventuity' : 'New message from your tutor'; }
       else { const admins = await (await admin('/rest/v1/profiles?select=id&role=eq.admin')).json(); recipients = admins.map((a: { id: string }) => a.id); title = 'Message from ' + (caller.full_name || 'a learner'); }
       body = text.length > 140 ? text.slice(0, 137) + '…' : text; tag = 'msg-' + learner_id;
       const subs = await (await admin('/rest/v1/push_subs?select=id,sub&user_id=in.(' + recipients.join(',') + ')')).json();
@@ -51,27 +53,45 @@ Deno.serve(async (req) => {
       for (const s of subs) { try { await webpush.sendNotification(s.sub, JSON.stringify({ title, body, tag, url: site + 'portal.html#messages' }), { TTL: 86400 }); sent++; } catch (e) { const code = (e as { statusCode?: number }).statusCode; if (code === 404 || code === 410) await admin('/rest/v1/push_subs?id=eq.' + s.id, { method: 'DELETE' }); } }
       return json({ sent, devices: subs.length });
     } else {
-      const rows = await (await admin('/rest/v1/bookings?select=*,profiles(full_name)&id=eq.' + booking_id)).json();
+      const rows = await (await admin('/rest/v1/bookings?select=*,profiles!bookings_learner_id_fkey(full_name)&id=eq.' + booking_id)).json();
       const b = rows[0]; if (!b) return json({ error: 'Booking not found' }, 404);
       const isAdmin = caller.role === 'admin';
-      if (!isAdmin && b.learner_id !== user.id) return json({ error: 'Not your booking' }, 403);
+      const isItsTutor = caller.role === 'tutor' && b.tutor_id === user.id;
+      if (!isAdmin && !isItsTutor && b.learner_id !== user.id) return json({ error: 'Not your booking' }, 403);
       const who = (b.profiles && b.profiles.full_name) || 'A learner';
       const what = (SUBJ[b.subject] || b.subject) + ' · ' + when(b.starts_at);
-      if (['requested', 'cancelled', 'pop'].includes(event)) {
+      // a lesson taught by another tutor: tell that tutor about changes too
+      let tutorId = '';
+      if (b.tutor_id && b.tutor_id !== user.id) {
+        const t = await (await admin('/rest/v1/profiles?select=id,role&id=eq.' + b.tutor_id)).json();
+        if (t[0] && t[0].role === 'tutor') tutorId = t[0].id;
+      }
+      if (isItsTutor) {
+        if (event !== 'delivered') return json({ sent: 0 });
+        const admins = await (await admin('/rest/v1/profiles?select=id&role=eq.admin')).json();
+        recipients = admins.map((a: { id: string }) => a.id);
+        title = 'Lesson delivered · ' + (caller.full_name || 'tutor'); body = who + ' – ' + what + (b.tutor_note ? ' – ' + String(b.tutor_note).slice(0, 100) : '');
+      } else if (['requested', 'cancelled', 'pop'].includes(event)) {
         const admins = await (await admin('/rest/v1/profiles?select=id&role=eq.admin')).json();
         recipients = admins.map((a: { id: string }) => a.id);
         title = event === 'requested' ? 'New booking request' : event === 'cancelled' ? 'Booking cancelled' : 'Proof of payment uploaded';
         body = who + ' – ' + what + (event === 'requested' ? ' · R' + Number(b.fee).toFixed(2) : '');
+        if (event === 'cancelled' && tutorId) extra.push({ to: [tutorId], title: 'Lesson cancelled', body: who + ' – ' + what, url: 'portal.html#tlessons' });
       } else if (isAdmin) {
         recipients = [b.learner_id];
         title = event === 'accepted' ? 'Lesson confirmed ✔' : event === 'declined' ? 'Booking not accepted' : event === 'paid' ? 'Payment received – thank you' : b.status === 'cancelled' ? 'Lesson cancelled' : 'Lesson updated';
         body = what + (b.admin_message ? ' – ' + b.admin_message : '');
+        if (tutorId && ['accepted', 'updated'].includes(event)) extra.push({ to: [tutorId], title: event === 'accepted' ? 'New lesson: ' + who : b.status === 'cancelled' ? 'Lesson cancelled: ' + who : 'Lesson changed: ' + who, body: what, url: 'portal.html#tlessons' });
       }
       tag = 'booking-' + b.id;
     }
-    if (!recipients.length) return json({ sent: 0 });
-    const subs = await (await admin('/rest/v1/push_subs?select=id,sub&user_id=in.(' + recipients.join(',') + ')')).json();
     let sent = 0;
+    for (const x of extra) {
+      const xs = await (await admin('/rest/v1/push_subs?select=id,sub&user_id=in.(' + x.to.join(',') + ')')).json();
+      for (const s of xs) { try { await webpush.sendNotification(s.sub, JSON.stringify({ title: x.title, body: x.body, tag, url: site + x.url }), { TTL: 86400 }); sent++; } catch (e) { const code = (e as { statusCode?: number }).statusCode; if (code === 404 || code === 410) await admin('/rest/v1/push_subs?id=eq.' + s.id, { method: 'DELETE' }); } }
+    }
+    if (!recipients.length) return json({ sent });
+    const subs = await (await admin('/rest/v1/push_subs?select=id,sub&user_id=in.(' + recipients.join(',') + ')')).json();
     for (const s of subs) {
       try {
         await webpush.sendNotification(s.sub, JSON.stringify({ title, body, tag, url: site + 'portal.html#' + (recipients.length && caller.role !== 'admin' ? 'dash' : 'lessons') }), { TTL: 86400 });

@@ -82,15 +82,16 @@
   ADV.gcal = (title, start, end, details, loc) => { const z = (d) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + enc(title) + '&dates=' + z(start) + '/' + z(end) + '&details=' + enc(details || '') + (loc ? '&location=' + enc(loc) : ''); };
 
   /* ---------------------------------------------------------------- state */
-  const state = ADV.state = { tab: null, topic: null, profile: null, isAdmin: false, approved: false, settings: {}, priv: {}, bookings: [], classes: [], loading: true, contentReady: false, contentError: '' };
+  const state = ADV.state = { tab: null, topic: null, profile: null, isAdmin: false, isTutor: false, approved: false, settings: {}, priv: {}, bookings: [], classes: [], loading: true, contentReady: false, contentError: '' };
   const sb = ADV.sb = window.SBMini(CFG.supabaseUrl, CFG.supabaseKey);
   ADV.setting = (k, d) => (state.settings[k] !== undefined ? state.settings[k] : d);
 
   /* ---------------------------------------------------------------- tabs */
   const LEARNER_TABS = [['home', 'Home', 'home'], ['book', 'Book', 'plus'], ['lessons', 'My lessons', 'cal'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['progress', 'Progress', 'chart'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
-  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
-  const tabs = () => (state.isAdmin ? ADMIN_TABS : LEARNER_TABS);
-  const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : ['home', 'book', 'lessons', 'maths']);
+  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['board', 'Board', 'pen'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
+  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
+  const tabs = () => (state.isAdmin ? ADMIN_TABS : state.isTutor ? TUTOR_TABS : LEARNER_TABS);
+  const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : state.isTutor ? ['tdash', 'tlessons', 'board', 'maths'] : ['home', 'book', 'lessons', 'maths']);
   ADV.go = function (tab, topic, opts) {
     state.tab = tab; state.topic = topic || null; state.quiz = null;
     const hash = topic ? '#t-' + topic : '#' + tab;
@@ -110,7 +111,7 @@
     const brand = (state.settings.site && state.settings.site.brand) || 'Adventuity';
     const nav = tabs().map(([id, label]) => '<button data-go="tab" data-id="' + id + '">' + esc(label) + '<i class="badge" data-badge="' + id + '" hidden></i></button>').join('');
     const mob = MOBILE().map((id) => { const t = tabs().find((x) => x[0] === id); return '<button data-go="tab" data-id="' + id + '">' + ICON[t[2]] + esc(t[1]) + '<i class="badge" data-badge="' + id + '" hidden></i></button>'; }).join('') + '<button data-action="sheet">' + ICON.more + 'More<i class="badge" data-badge="more" hidden></i></button>';
-    return '<header class="topbar"><div class="wrap"><a class="brand" href="index.html"><span class="mark" aria-hidden="true"></span><span><b>' + esc(brand) + '</b><small>' + (state.isAdmin ? 'Tutor dashboard' : 'Learner portal') + '</small></span></a>' +
+    return '<header class="topbar"><div class="wrap"><a class="brand" href="index.html"><span class="mark" aria-hidden="true"></span><span><b>' + esc(brand) + '</b><small>' + (state.isAdmin ? 'Admin dashboard' : state.isTutor ? 'Tutor portal' : 'Learner portal') + '</small></span></a>' +
       (state.profile ? '<nav class="nav" aria-label="Sections">' + nav + '</nav>' : '') + '</div></header>' +
       '<main><div class="wrap" id="view"></div></main>' +
       (state.profile ? '<nav class="tabbar" aria-label="Sections">' + mob + '</nav>' +
@@ -131,11 +132,13 @@
   /* ---------------------------------------------------------------- render */
   function render() {
     const app = $('#app');
-    if (!app.dataset.shell || app.dataset.shell !== String(!!state.profile) + state.isAdmin) { app.innerHTML = shell(); app.dataset.shell = String(!!state.profile) + state.isAdmin; }
+    const sk = String(!!state.profile) + state.isAdmin + state.isTutor;
+    if (!app.dataset.shell || app.dataset.shell !== sk) { app.innerHTML = shell(); app.dataset.shell = sk; }
     markNav(); ADV.badges();
     const view = $('#view');
     if (state.loading) { view.innerHTML = '<div class="card"><p class="muted">Loading…</p></div>'; return; }
     if (!state.profile) { view.innerHTML = viewAuth(); return; }
+    if (state.profile.must_change_password) { view.innerHTML = viewNewPassword(); return; }
     let html;
     try {
       if (state.topic && ADV.views.topic) html = ADV.views.topic(state.topic);
@@ -147,6 +150,18 @@
     if (ADV.renderOverlay) ADV.renderOverlay();
   }
   ADV.render = render;
+
+  /* ---------------------------------------------------------------- first sign-in with a temporary password */
+  function viewNewPassword() {
+    const p = state.profile; const first = (p.full_name || '').split(' ')[0];
+    return '<div class="auth"><div class="auth-card card"><div class="auth-head"><span class="mark big" aria-hidden="true"></span><div><h1>Welcome' + (first ? ', ' + esc(first) : '') + '</h1><p class="muted">You signed in with a temporary password. Choose your own password to continue.</p></div></div>' +
+      '<form id="f-newpass" class="stack" style="gap:12px"><div class="field"><label for="np-1">New password (8+ characters)</label><input id="np-1" type="password" autocomplete="new-password" required minlength="8"></div><div class="field"><label for="np-2">Repeat the new password</label><input id="np-2" type="password" autocomplete="new-password" required minlength="8"></div>' +
+      '<div id="np-msg" class="small" role="alert"></div><button class="btn primary" type="submit">Save my password</button><button class="btn ghost" type="button" data-action="signout">Sign out</button></form></div></div>';
+  }
+  async function clearPasswordFlag() {
+    if (!state.profile || !state.profile.must_change_password) return;
+    try { const r = await sb.update('profiles', { id: 'eq.' + state.profile.id }, { must_change_password: false }); state.profile = r[0] || Object.assign(state.profile, { must_change_password: false }); } catch (e) { state.profile.must_change_password = false; }
+  }
 
   /* ---------------------------------------------------------------- auth */
   function viewAuth() {
@@ -172,6 +187,13 @@
       try { await sb.fn('signup', body); await doSignIn(body.email, body.password); }
       catch (err) { msg.textContent = ADV.errMsg(err); }
     }
+    if (e.target.id === 'f-newpass') {
+      e.preventDefault(); const a = $('#np-1').value, b = $('#np-2').value; const msg = $('#np-msg');
+      if (a.length < 8) { msg.textContent = 'Use at least 8 characters.'; return; } if (a !== b) { msg.textContent = 'The two passwords differ.'; return; }
+      if (/^Adv-/.test(a)) { msg.textContent = 'Choose a new password, not the temporary one.'; return; }
+      msg.textContent = 'Saving…';
+      try { await sb.auth.updatePassword(a); await clearPasswordFlag(); toast('Password saved – welcome!'); render(); } catch (err) { msg.textContent = ADV.errMsg(err); }
+    }
     if (ADV.onSubmit) ADV.onSubmit(e);
   });
 
@@ -188,24 +210,29 @@
       state.profile = rows[0] || null;
       if (!state.profile) throw new Error('Your profile could not be loaded.');
       if (state.profile.blocked) { await sb.auth.signOut(); state.profile = null; state.loading = false; render(); toast('This account has been disabled. Contact the tutor.', 5000); return; }
-      state.isAdmin = state.profile.role === 'admin';
+      state.isAdmin = state.profile.role === 'admin'; state.isTutor = state.profile.role === 'tutor';
       await Promise.all([loadSettings(), loadPrivate(), ADV.loadBookings()]);
       state.approved = state.isAdmin || state.profile.approved || !!(state.settings.access && state.settings.access.open);
       if (ADV.loadProgress) await ADV.loadProgress();
       if (state.isAdmin && ADV.adminInit) await ADV.adminInit();
+      if (state.isTutor && ADV.tutorInit) await ADV.tutorInit();
     } catch (e) { console.error(e); toast(ADV.errMsg(e), 5000); if (e.status === 401) { await sb.auth.signOut(); state.profile = null; } }
     state.loading = false; readHash(); render();
     if (state.profile && state.approved && ADV.loadContent) ADV.loadContent().then(() => render());
   }
-  ADV.signOut = async () => { await sb.auth.signOut(); state.profile = null; state.isAdmin = false; state.approved = false; state.contentReady = false; location.hash = ''; render(); };
+  ADV.signOut = async () => { await sb.auth.signOut(); state.profile = null; state.isAdmin = false; state.isTutor = false; state.approved = false; state.contentReady = false; location.hash = ''; render(); };
 
   /* ---------------------------------------------------------------- bookings (shared) */
   ADV.loadBookings = async function () {
     if (!sb.user) return;
     try {
-      const q = state.isAdmin ? { select: '*,profiles(full_name,phone,email,school)', order: 'starts_at.desc', limit: 3000 } : { select: '*,classes(title)', learner_id: 'eq.' + sb.user.id, order: 'starts_at.desc' };
+      if (state.isTutor) { state.bookings = await sb.rpc('tutor_lessons', { from_ts: new Date(Date.now() - 120 * 864e5).toISOString() }) || []; state.classes = []; return; }
+      const q = state.isAdmin ? { select: '*,profiles!bookings_learner_id_fkey(full_name,phone,email,school)', order: 'starts_at.desc', limit: 3000 } : { select: '*,classes(title)', learner_id: 'eq.' + sb.user.id, order: 'starts_at.desc' };
       state.bookings = await sb.select('bookings', q);
       state.classes = await sb.select('classes', { order: 'starts_at.asc', starts_at: 'gte.' + new Date(Date.now() - 864e5).toISOString() });
+      if (!state.isAdmin && state.bookings.some((b) => b.tutor_id && !(state.tutorNames || {})[b.tutor_id])) {
+        try { const t = await sb.rpc('my_tutors', {}); state.tutorNames = {}; (t || []).forEach((x) => { state.tutorNames[x.tutor_id] = x.full_name; }); } catch (e) { /* names are optional */ }
+      }
     } catch (e) { console.error(e); }
   };
   const STATUS = ADV.STATUS = { pending: ['warn', 'Waiting for the tutor'], accepted: ['good', 'Confirmed'], declined: ['bad', 'Not accepted'], cancelled: ['', 'Cancelled'], completed: ['', 'Completed'] };
@@ -304,7 +331,8 @@
   function lessonCard(b, big) {
     const s = new Date(b.starts_at); const jw = ADV.joinWindow(b); const room = ADV.bookingRoom(b);
     const title = b.class_id ? (b.classes && b.classes.title) || 'Group class' : SUBJ[b.subject].name + ' – one-on-one';
-    const pay = b.status === 'accepted' || b.status === 'completed' ? (b.paid ? pill('good', 'Paid') : pill('warn', 'Payment due ' + fmt.rand(b.fee))) : '';
+    const due = Number(b.fee) > 0;
+    const pay = (b.status === 'accepted' || b.status === 'completed') && due ? (b.paid ? pill('good', 'Paid') : pill('warn', 'Payment due ' + fmt.rand(b.fee))) : '';
     let actions = '';
     if (b.status === 'accepted' && !jw.over) {
       actions += jw.open && room ? '<a class="btn primary" href="' + esc(ADV.roomUrl(room, state.profile.full_name)) + '" target="_blank" rel="noopener">' + ICON.video + 'Join the lesson</a>' : '<span class="small muted">' + ICON.clock + ' Join opens 15 minutes before the start</span>';
@@ -314,11 +342,12 @@
     if (b.status === 'accepted' && new Date(b.starts_at) - now() > 24 * 36e5) actions += '<button class="btn sm ghost" data-action="b-cancel" data-id="' + b.id + '" data-confirm="1">Cancel lesson</button>';
     const review = state.settings.site && state.settings.site.reviewUrl;
     if (b.status === 'completed' && review && /^https:\/\//.test(review)) actions += '<a class="btn sm" href="' + esc(review) + '" target="_blank" rel="noopener">★ Leave a Google review</a>';
-    if ((b.status === 'accepted' || b.status === 'completed') && !b.paid) actions += '<button class="btn sm" data-action="b-pay" data-id="' + b.id + '">How to pay</button>' + '<label class="btn sm file-btn">' + (b.pop_path ? 'Replace proof of payment' : 'Upload proof of payment') + '<input type="file" accept="image/*,application/pdf" data-action="b-pop" data-id="' + b.id + '" hidden></label>';
+    if ((b.status === 'accepted' || b.status === 'completed') && !b.paid && due) actions += '<button class="btn sm" data-action="b-pay" data-id="' + b.id + '">How to pay</button>' + '<label class="btn sm file-btn">' + (b.pop_path ? 'Replace proof of payment' : 'Upload proof of payment') + '<input type="file" accept="image/*,application/pdf" data-action="b-pop" data-id="' + b.id + '" hidden></label>';
     return '<div class="card lesson' + (['declined', 'cancelled', 'completed'].includes(b.status) || jw.over ? ' past' : '') + '"><div class="date"><span>' + esc(fmt.wd(s)) + '</span><b>' + esc(fmt.day(s)) + '</b><span>' + esc(fmt.mon(s)) + '</span></div><div style="min-width:0">' +
       '<div class="row" style="gap:6px">' + ADV.statusPill(b) + pill(b.subject, SUBJ[b.subject].short) + pay + (b.pop_path && !b.paid ? pill('', 'Proof sent') : '') + '<span class="mono small muted">Ref ' + esc(b.ref) + '</span></div>' +
       '<h3 style="margin-top:6px">' + esc(title) + '</h3><p class="small muted">' + esc(fmt.long(s)) + ' · ' + esc(fmt.time(s)) + '–' + esc(fmt.time(b.ends_at)) + (b.topics ? ' · ' + esc(ADV.topicNames ? ADV.topicNames(b.topics) : b.topics) : '') + '</p>' +
-      (b.admin_message ? '<p class="tutor-msg"><b>Tutor:</b> ' + esc(b.admin_message) + '</p>' : '') +
+      (b.tutor_id && (state.tutorNames || {})[b.tutor_id] ? '<p class="small" style="margin-top:2px">' + ICON.user + ' Your tutor: <b>' + esc(state.tutorNames[b.tutor_id]) + '</b></p>' : '') +
+      (b.admin_message ? '<p class="tutor-msg"><b>' + (b.tutor_id ? 'Note:' : 'Tutor:') + '</b> ' + esc(b.admin_message) + '</p>' : '') +
       (state.payOpen === b.id ? payBox(b) : '') +
       (actions ? '<div class="row" style="margin-top:10px">' + actions + '</div>' : '') + '</div></div>';
   }
@@ -332,7 +361,7 @@
     const up = list.filter((b) => ['pending', 'accepted'].includes(b.status) && new Date(b.ends_at) > now());
     const past = list.filter((b) => !up.includes(b)).reverse();
     return '<div class="stack"><div class="row" style="justify-content:space-between;align-items:flex-end"><div><span class="eyebrow">Lessons</span><h1>My lessons</h1></div><button class="btn primary" data-go="tab" data-id="book">' + ICON.plus + 'Book a lesson</button></div>' +
-      '<div class="callout small">Confirmed lessons run in a private online classroom (video, screen share, whiteboard and chat). Tap <b>Join the lesson</b> when it opens – it starts in a new window. On a phone you may be asked to install the free Jitsi Meet app the first time.</div>' +
+      '<div class="callout small">Confirmed lessons run online in Google Meet or a private classroom (video, screen share, whiteboard and chat). Tap <b>Join the lesson</b> when it opens, 15 minutes before the start – it opens in a new window. On a phone, install the free Google Meet app (or Jitsi Meet, if asked) the first time. If you are asked to wait, your tutor lets you in.</div>' +
       (up.length ? up.map((b) => lessonCard(b)).join('') : '<div class="card"><p class="muted">No upcoming lessons. Book one and it shows up here.</p></div>') +
       (past.length ? '<h2>Earlier</h2>' + past.map((b) => lessonCard(b)).join('') : '') + '</div>';
   };
@@ -341,22 +370,29 @@
   ADV.views.account = function () {
     const p = state.profile;
     const f = (id, label, val, type) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>';
-    return '<div class="stack"><div><span class="eyebrow">Account</span><h1>' + esc(p.full_name || 'Your account') + '</h1><p class="small muted">' + esc(p.email || '') + (state.isAdmin ? ' · tutor (administrator)' : state.approved ? ' · study notes unlocked' : ' · waiting for approval') + '</p></div>' +
-      '<form id="f-profile" class="card stack"><h3>Your details</h3><div class="grid cols-2">' + f('p-name', 'Name and surname', p.full_name) + f('p-phone', 'WhatsApp number', p.phone, 'tel') + f('p-school', 'School', p.school) + f('p-guardian', 'Parent/guardian number', p.guardian_phone, 'tel') + '</div><div class="row"><button class="btn primary" type="submit">Save details</button></div></form>' +
+    const fields = state.isTutor ? f('p-name', 'Name and surname', p.full_name) + f('p-phone', 'WhatsApp number', p.phone, 'tel') + '<div class="field" style="grid-column:1/-1"><label for="p-meet">My Google Meet link (used for my lessons)</label><input id="p-meet" type="url" placeholder="https://meet.google.com/abc-defg-hij" value="' + esc(p.meet_link || '') + '"><span class="small muted">Open meet.google.com → New meeting → Create a meeting for later, and paste the link here. Change one lesson\'s link under My lessons.</span></div>'
+      : f('p-name', 'Name and surname', p.full_name) + f('p-phone', 'WhatsApp number', p.phone, 'tel') + f('p-school', 'School', p.school) + f('p-guardian', 'Parent/guardian number', p.guardian_phone, 'tel');
+    return '<div class="stack"><div><span class="eyebrow">Account</span><h1>' + esc(p.full_name || 'Your account') + '</h1><p class="small muted">' + esc(p.email || '') + (state.isAdmin ? ' · administrator' : state.isTutor ? ' · tutor' : state.approved ? ' · study notes unlocked' : ' · waiting for approval') + '</p></div>' +
+      '<form id="f-profile" class="card stack"><h3>Your details</h3><div class="grid cols-2">' + fields + '</div><div class="row"><button class="btn primary" type="submit">Save details</button></div></form>' +
       '<form id="f-pass" class="card stack"><h3>Change password</h3><div class="grid cols-2">' + f('p-pass1', 'New password (8+ characters)', '', 'password') + f('p-pass2', 'Repeat the new password', '', 'password') + '</div><div class="row"><button class="btn" type="submit">Change password</button></div></form>' +
-      (ADV.pushCard ? ADV.pushCard(state.isAdmin ? 'Get an alert on this device for every new booking request.' : 'Get an alert when the tutor confirms or changes a lesson.') : '') +
+      (ADV.pushCard ? ADV.pushCard(state.isAdmin ? 'Get an alert on this device for every new booking request.' : state.isTutor ? 'Get an alert when a lesson is assigned to you or changes.' : 'Get an alert when the tutor confirms or changes a lesson.') : '') +
       '<div class="card row" style="justify-content:space-between"><div><b>Install the app</b><p class="small muted">Put the portal on your home screen for one-tap access.</p></div>' + (ADV.installButton ? ADV.installButton(true) : '') + '</div>' +
       '<div class="card row" style="justify-content:space-between"><b>Sign out of this device</b><button class="btn" data-action="signout">Sign out</button></div></div>';
   };
   ADV.onSubmitCore = async function (e) {
     if (e.target.id === 'f-profile') {
-      e.preventDefault(); const patch = { full_name: $('#p-name').value.trim(), phone: $('#p-phone').value.trim(), school: $('#p-school').value.trim(), guardian_phone: $('#p-guardian').value.trim() };
-      try { const r = await sb.update('profiles', { id: 'eq.' + state.profile.id }, patch); state.profile = r[0] || state.profile; toast('Saved'); } catch (err) { toast(ADV.errMsg(err)); }
+      e.preventDefault(); const patch = {}; const v = (sel) => { const el = $(sel); return el ? el.value.trim() : undefined; };
+      [['full_name', '#p-name'], ['phone', '#p-phone'], ['school', '#p-school'], ['guardian_phone', '#p-guardian']].forEach(([k, sel]) => { const x = v(sel); if (x !== undefined) patch[k] = x; });
+      const link = v('#p-meet'); if (link && !/^https:\/\/\S{6,}$/.test(link)) return toast('Paste the full meeting link, starting with https://', 4000);
+      try {
+        const r = await sb.update('profiles', { id: 'eq.' + state.profile.id }, patch); state.profile = r[0] || state.profile;
+        if (link !== undefined && link !== (state.profile.meet_link || '') && ADV.tutorApplyLink) await ADV.tutorApplyLink(link); else toast('Saved');
+      } catch (err) { toast(ADV.errMsg(err)); }
     }
     if (e.target.id === 'f-pass') {
       e.preventDefault(); const a = $('#p-pass1').value, b = $('#p-pass2').value;
       if (a.length < 8) return toast('Use at least 8 characters'); if (a !== b) return toast('The two passwords differ');
-      try { await sb.auth.updatePassword(a); toast('Password changed'); $('#p-pass1').value = ''; $('#p-pass2').value = ''; } catch (err) { toast(ADV.errMsg(err)); }
+      try { await sb.auth.updatePassword(a); await clearPasswordFlag(); toast('Password changed'); $('#p-pass1').value = ''; $('#p-pass2').value = ''; } catch (err) { toast(ADV.errMsg(err)); }
     }
   };
 
@@ -453,7 +489,7 @@
     if (sb.session) { await afterLogin(); }
     else { state.loading = false; state.authMode = /signup/.test(location.hash) ? 'signup' : 'signin'; render(); }
     if (state.tab === 'book') await ADV.refreshBusy();
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.profile) ADV.loadBookings().then(() => { if (!document.querySelector('input:focus,textarea:focus,select:focus')) render(); }); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.profile) ADV.loadBookings().then(() => { if (!document.querySelector('input:focus,textarea:focus,select:focus') && state.tab !== 'board') render(); }); });
   };
   ADV.after.push(async () => { if (state.tab === 'book' && !state.busy && state.profile) { await ADV.refreshBusy(); render(); } });
 })();

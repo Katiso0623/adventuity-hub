@@ -57,7 +57,7 @@ css = ':root{--mark-mask:url(data:image/png;base64,' + mark + ')}\n' + theme + '
 wr('assets/app.css', css)
 
 # ---- scripts
-for f in ['sbmini.js', 'steps.js', 'figlib.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js']:
+for f in ['sbmini.js', 'steps.js', 'figlib.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'portal_tutor.js', 'portal_board.js']:
     shutil.copy(os.path.join(D, f), os.path.join(OUT, 'assets', f))
 wr('assets/mj-config.js', 'window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],displayMath:[["\\\\[","\\\\]"]]},svg:{fontCache:"global"},options:{enableMenu:false},startup:{typeset:false,ready:function(){MathJax.startup.defaultReady();MathJax.startup.promise.then(function(){if(window.__onMathJaxReady)window.__onMathJaxReady();});}}};\n')
 wr('assets/boot.js', 'window.ADV.boot();\n')
@@ -107,6 +107,8 @@ portal = '''<!doctype html>
 <script src="assets/portal_msgs.js%(v)s"></script>
 <script src="assets/portal_study.js%(v)s"></script>
 <script src="assets/portal_admin.js%(v)s"></script>
+<script src="assets/portal_tutor.js%(v)s"></script>
+<script src="assets/portal_board.js%(v)s"></script>
 <script src="assets/boot.js%(v)s"></script>
 </body>
 </html>
@@ -119,7 +121,7 @@ manifest = {"name": "Adventuity – Grade 12 lessons", "short_name": "Adventuity
             "icons": [{"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"}, {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
             "shortcuts": [{"name": "Book a lesson", "url": "./portal.html#book"}, {"name": "My lessons", "url": "./portal.html#lessons"}, {"name": "Messages", "url": "./portal.html#messages"}]}
 json.dump(manifest, open(os.path.join(OUT, 'manifest.webmanifest'), 'w'), indent=2)
-shell = ['./portal.html', './config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'] + ['./assets/' + f + v for f in ['app.css', 'mj-config.js', 'sbmini.js', 'steps.js', 'figlib.js', 'outline.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'boot.js']]
+shell = ['./portal.html', './config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'] + ['./assets/' + f + v for f in ['app.css', 'mj-config.js', 'sbmini.js', 'steps.js', 'figlib.js', 'outline.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'portal_tutor.js', 'portal_board.js', 'boot.js']]
 sw = '''/* Adventuity service worker: offline app shell, encrypted notes cache, push notifications. */
 const CACHE = 'adv-%(b)s';
 const SHELL = %(shell)s;

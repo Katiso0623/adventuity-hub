@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qsl, unquote
 ap = argparse.ArgumentParser(); ap.add_argument('--port', type=int, default=54321); ap.add_argument('--db'); ap.add_argument('--pghost'); ap.add_argument('--pgport', default='5499'); ap.add_argument('--site'); ap.add_argument('--config', default='')
 A = ap.parse_args()
 LOG = []; LOCK = threading.Lock()
-SETOF = {'busy_slots', 'class_seats'}
+SETOF = {'busy_slots', 'class_seats', 'tutor_lessons', 'tutor_learners', 'my_tutors'}
 EMBED = {('bookings', 'profiles'): ('profiles', 'id', 'learner_id'), ('bookings', 'classes'): ('classes', 'id', 'class_id')}
 IDENT = re.compile(r'^[a-z_][a-z0-9_]*$')
 
@@ -45,10 +45,10 @@ def where(table, params):
     return (' where ' + ' and '.join(conds)) if conds else ''
 
 def cols(table, sel):
-    out = []; parts = re.findall(r'[a-z_]+\([^)]*\)|[^,]+', sel or '*')
+    out = []; parts = re.findall(r'[a-z_]+(?:![a-z_]+)?\([^)]*\)|[^,]+', sel or '*')
     for p in parts:
         p = p.strip()
-        m = re.match(r'^([a-z_]+)\(([^)]*)\)$', p)
+        m = re.match(r'^([a-z_]+)(?:![a-z_]+)?\(([^)]*)\)$', p)
         if m:
             name, inner = m.group(1), m.group(2)
             ft, fk, lk = EMBED[(table, name)]
@@ -122,7 +122,7 @@ class H(SimpleHTTPRequestHandler):
     def rpc(self, name):
         args = json.loads(self.body() or b'{}'); a = ', '.join('%s := %s' % (k, lit(v)) for k, v in args.items() if IDENT.match(k))
         if name in SETOF: out = run('select coalesce(json_agg(t), \'[]\') from public.%s(%s) t' % (name, a), self.uid()); return self.reply(200, raw=out.encode())
-        run('select public.%s(%s)' % (name, a), self.uid()); return self.reply(200, raw=b'null')
+        out = run('select to_json(public.%s(%s))' % (name, a), self.uid()); return self.reply(200, raw=(out or 'null').encode())
     def auth(self, method, path, q):
         if path == '/auth/v1/token':
             b = json.loads(self.body() or b'{}')
@@ -155,7 +155,15 @@ class H(SimpleHTTPRequestHandler):
         if name == 'admin-users':
             role = run("select role from public.profiles where id = %s" % lit(uid or '00000000-0000-0000-0000-000000000000'), 'service')
             if role != 'admin': return self.reply(403, {'error': 'Only the tutor can do this'})
-            if b.get('action') == 'reset_password': run("update auth.users set raw_user_meta_data = raw_user_meta_data || jsonb_build_object('pw', %s) where id = %s" % (lit(b['password']), lit(b['user_id'])), 'service')
+            if b.get('action') == 'create_account':
+                if run('select 1 from auth.users where lower(email) = lower(%s)' % lit(b.get('email')), 'service'): return self.reply(409, {'error': 'That e-mail already has an account.'})
+                meta = {'full_name': b.get('full_name', ''), 'phone': b.get('phone', ''), 'school': b.get('school', ''), 'pw': b['password']}
+                nid = run('insert into auth.users (email, raw_user_meta_data) values (%s, %s::jsonb) returning id' % (lit(b['email'].lower()), lit(json.dumps(meta))), 'service').splitlines()[0]
+                if b.get('role') == 'tutor': patch = "role = 'tutor', approved = true, must_change_password = true, meet_link = %s, tutor_rate = %s, tutor_subjects = %s" % (lit(b.get('meet_link', '')), float(b.get('tutor_rate') or 0), lit(b.get('tutor_subjects', '')))
+                else: patch = 'approved = %s, must_change_password = true' % ('false' if b.get('approved') is False else 'true')
+                prof = run('with p as (update public.profiles set %s where id = %s returning *) select row_to_json(p) from p' % (patch, lit(nid)), 'service')
+                return self.reply(200, {'ok': True, 'user_id': nid, 'profile': json.loads(prof)})
+            if b.get('action') == 'reset_password': run("update auth.users set raw_user_meta_data = raw_user_meta_data || jsonb_build_object('pw', %s) where id = %s; update public.profiles set must_change_password = true where id = %s" % (lit(b['password']), lit(b['user_id']), lit(b['user_id'])), 'service')
             if b.get('action') == 'delete': run('delete from auth.users where id = %s' % lit(b['user_id']), 'service')
             return self.reply(200, {'ok': True})
         return self.reply(404, {'error': 'no function'})
