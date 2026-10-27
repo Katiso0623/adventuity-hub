@@ -1,13 +1,13 @@
 # Adventuity – Grades 10–12 Maths, Physical Sciences and Life Sciences
 
-Live site: https://katiso0623.github.io/adventuity-hub/  
-Learner and tutor portal: https://katiso0623.github.io/adventuity-hub/portal.html
+Live site: https://learn.adventuity.co.za/ (GitHub Pages with a custom domain; the old katiso0623.github.io/adventuity-hub/ address forwards here)  
+Learner and tutor portal: https://learn.adventuity.co.za/portal.html
 
 ## What is where
 
 | Folder / file | What it is |
 |---|---|
-| `site/` | The published website (GitHub Pages deploys only this folder). |
+| `site/` | The published website (GitHub Pages deploys only this folder). The address is set in `cfg.json` (`siteUrl`) and in the repository's Pages settings (custom domain learn.adventuity.co.za, DNS CNAME `learn` → `katiso0623.github.io` at Afrihost). |
 | `site/index.html`, `maths.html`, `physical-sciences.html`, `life-sciences.html`, `grade-10.html`, `grade-11.html` | Public pages that search engines index. They show topics and study times, but no notes. |
 | `site/portal.html` | The portal app for learners and the tutor: bookings, lessons, messages and study. |
 | `site/content.bin`, `content-10.bin`, `content-11.bin` | The study notes for Grade 12, 10 and 11, encrypted (gzip + AES-256-GCM). One file per grade, so a learner downloads only the grade they open. The key is stored in Supabase (`content_keys`). Only the tutor and learners the tutor has unlocked can read them. |
