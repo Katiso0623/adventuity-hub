@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://katiso0623.github.io/adventuity-hub/sitemap.xml
+Sitemap: https://learn.adventuity.co.za/sitemap.xml
