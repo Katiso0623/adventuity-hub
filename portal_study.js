@@ -258,7 +258,7 @@
       '<p style="margin-top:8px;max-width:75ch">' + T(t.overview) + '</p>' +
       '<div class="row" style="margin-top:12px"><span class="pill accent wrap">' + esc(t.weight) + '</span>' + (t.book ? '<span class="pill">Textbook ' + esc(t.book.chapter) + ' · p. ' + esc(t.book.pages) + '</span>' : '') + '</div>' +
       '<div class="est-box"><div><span class="eyebrow">Study time</span><b>≈ ' + fmt.mins(e.total) + '</b></div><div><span class="eyebrow">Notes & examples</span>' + fmt.mins(e.notes) + '</div><div><span class="eyebrow">Exam questions</span>' + fmt.mins(e.prac) + '</div><div><span class="eyebrow">Quiz</span>' + fmt.mins(e.quiz) + '</div><div><span class="eyebrow">Left</span><b>' + fmt.mins(e.left) + '</b></div></div>' + barHtml(e.pct) +
-      '<div class="row" style="margin-top:14px"><button class="btn sm ' + (st === 'done' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="done">' + ICON.check + 'Topic done</button><button class="btn sm ' + (st === 'review' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="review">Needs work</button>' + (t.ref ? ADV.btnLink(t.ref.url, t.ref.label, 'sm ghost', ICON.ext) : '') + (t.practice.length ? '<button class="btn sm ghost" data-action="scroll" data-id="practice">' + t.practice.length + ' exam questions</button>' : '') + '<button class="btn sm ghost" data-action="scroll" data-id="quiz">Quiz</button>' + (state.isAdmin || state.isTutor ? '' : '<button class="btn sm ghost" data-action="book-topic-go" data-id="' + esc(id) + '">Book a lesson on this</button>') + '</div>' +
+      '<div class="row" style="margin-top:14px"><button class="btn sm ' + (st === 'done' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="done">' + ICON.check + 'Topic done</button><button class="btn sm ' + (st === 'review' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="review">Needs work</button>' + (t.ref ? ADV.btnLink(t.ref.url, t.ref.label, 'sm ghost wrap', ICON.ext) : '') + (t.practice.length ? '<button class="btn sm ghost" data-action="scroll" data-id="practice">' + t.practice.length + ' exam questions</button>' : '') + '<button class="btn sm ghost" data-action="scroll" data-id="quiz">Quiz</button>' + (state.isAdmin || state.isTutor ? '' : '<button class="btn sm ghost" data-action="book-topic-go" data-id="' + esc(id) + '">Book a lesson on this</button>') + '</div>' +
       '<div style="margin-top:12px">' + notesHtml(id) + '</div></div>' +
       '<div class="stack">' + t.sections.map((s, i) => secHtml(t, s, i)).join('') + '</div>' +
       practiceHtml(t) +
@@ -537,6 +537,16 @@
   ADV.actions['open-sec'] = (a) => { state.openSec = a.dataset.id; ADV.go('study', a.dataset.t); setTimeout(() => { const el = $('#sec-' + CSS.escape(a.dataset.id)); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 120); };
 
   /* ---------------------------------------------------------------- after each render: maths, quiz, watermark */
+  /* tap a diagram to see it large: labels in the big Life Sciences drawings are small on a phone */
+  document.addEventListener('click', (e) => {
+    const svg = e.target.closest && e.target.closest('.fg-fig svg.fig'); if (!svg || svg.closest('.overlay, .figzoom')) return;
+    const z = document.createElement('div'); z.className = 'figzoom protect'; z.setAttribute('role', 'dialog'); z.setAttribute('aria-label', 'Enlarged diagram');
+    z.innerHTML = '<div class="figzoom-bar"><span class="small muted">Scroll or pinch to look around</span><button class="btn sm figzoom-x" type="button">Close ✕</button></div><div class="figzoom-scroll"><div class="figzoom-body">' + svg.closest('.fg-fig').innerHTML + '</div></div>';
+    const onKey = (k) => { if (k.key === 'Escape') close(); };
+    const close = () => { z.remove(); document.removeEventListener('keydown', onKey); };
+    z.addEventListener('click', (ev) => { if (ev.target.closest('.figzoom-x') || ev.target.classList.contains('figzoom-scroll')) close(); });
+    document.addEventListener('keydown', onKey); document.body.appendChild(z); z.querySelector('.figzoom-x').focus({ preventScroll: true });
+  });
   ADV.after.push((view) => {
     if (state.topic && ready()) renderQuiz();
     if (/\\\(|\\\[/.test(view.innerHTML)) ADV.typeset(view);

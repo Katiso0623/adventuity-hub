@@ -11,15 +11,32 @@
   const LEVELS = { 1: 'Knowledge', 2: 'Routine', 3: 'Complex', 4: 'Problem solving' };
 
   /* ---------------------------------------------------------------- outline helpers (public data) */
-  const subjTopics = (sj) => {
-    if (sj === 'maths') return ORDER.P1.concat(ORDER.P2).map((id) => OT[id]).filter(Boolean).concat(OUT.filter((t) => t.subj === 'maths' && !ORDER.P1.includes(t.id) && !ORDER.P2.includes(t.id)));
-    return OUT.filter((t) => t.subj === sj);
+  const grOf = ADV.grOf = (t) => Number(t && t.gr) || 12;
+  const TABSUB = { maths: ['maths'], sci: ['phys', 'chem'], life: ['life'] };
+  const PAPERS = { maths: ['P1', 'P2'], phys: ['P1'], chem: ['P2'], life: ['P1', 'P2'] };
+  const SUBJ_LONG = { maths: 'Mathematics', phys: 'Physical Sciences', chem: 'Physical Sciences', life: 'Life Sciences' };
+  const paperName = (sj, pp) => (sj === 'phys' ? 'Paper 1 · Physics' : sj === 'chem' ? 'Paper 2 · Chemistry' : 'Paper ' + pp.slice(1));
+  const subjTopics = (sj, gr) => {
+    gr = gr || 12;
+    if (sj === 'maths' && gr === 12) return ORDER.P1.concat(ORDER.P2).map((id) => OT[id]).filter(Boolean).concat(OUT.filter((t) => t.subj === 'maths' && grOf(t) === 12 && !ORDER.P1.includes(t.id) && !ORDER.P2.includes(t.id)));
+    return OUT.filter((t) => t.subj === sj && grOf(t) === gr);
   };
-  const paperTopics = (sj, pp) => (sj === 'maths' ? (ORDER[pp] || []).map((id) => OT[id]).filter(Boolean) : OUT.filter((t) => t.subj === sj));
-  ADV.outlineTopics = (sj) => subjTopics(sj).map((t) => ({ id: t.id, title: t.title }));
+  const paperTopics = (sj, pp, gr) => {
+    gr = gr || 12;
+    if (sj === 'maths' && gr === 12) return (ORDER[pp] || []).map((id) => OT[id]).filter(Boolean);
+    return OUT.filter((t) => t.subj === sj && grOf(t) === gr && (!pp || t.paper === pp));
+  };
+  ADV.outlineTopics = (sj, gr) => subjTopics(sj, gr || ADV.myGrade()).map((t) => ({ id: t.id, title: t.title }));
   ADV.topicNames = (csv) => String(csv || '').split(',').filter(Boolean).map((id) => (OT[id] ? OT[id].title : id)).join(', ');
-  ADV.topicTab = (id) => ((OT[id] || {}).subj === 'maths' ? 'maths' : 'sci');
-  const examOf = (t) => { const id = t.subj === 'maths' ? (t.paper === 'P2' ? 'mp2' : 'mp1') : t.subj === 'phys' ? 'pp1' : 'pp2'; return (CFG.exams || []).find((e) => e.id === id); };
+  ADV.topicTab = (id) => { const sj = (OT[id] || {}).subj; return sj === 'maths' ? 'maths' : sj === 'life' ? 'life' : 'sci'; };
+  const examTopics = (e) => paperTopics(e.subj, e.subj === 'maths' || e.subj === 'life' ? (/2/.test(e.paper) ? 'P2' : 'P1') : e.subj === 'phys' ? 'P1' : 'P2', 12);
+  /* subjects this learner works on (progress or bookings); everything when nothing yet */
+  const mySubjects = () => {
+    const set = new Set(); const touched = (id) => { const o = OT[id] || (D.SECTION[id] && OT[D.SECTION[id].topic.id]) || (D.QUESTION[id] && OT[D.QUESTION[id].topic.id]); if (o) set.add(o.subj); };
+    Object.keys(P.topics).forEach(touched); Object.keys(P.secs).forEach((sid) => { const o = OUT.find((t) => t.sections.some((s) => s.id === sid)); if (o) set.add(o.subj); }); Object.keys(P.practice).forEach((qid) => { const o = OUT.find((t) => (t.pq || []).some(([q]) => q === qid)); if (o) set.add(o.subj); });
+    (state.bookings || []).forEach((b) => { if (b.subject) set.add(b.subject); });
+    return set.size ? set : new Set(['maths', 'phys', 'chem']);
+  };
   const daysTo = (when) => { const a = new Date(fmt.key(ADV.now()) + 'T00:00:00+02:00'), b = new Date(fmt.key(when) + 'T00:00:00+02:00'); return Math.round((b - a) / 864e5); };
 
   /* ---------------------------------------------------------------- progress (synced to the account) */
@@ -50,7 +67,7 @@
   };
   const paperLoad = ADV.paperLoad = function (data) {
     return (CFG.exams || []).map((e) => {
-      const ts = e.subj === 'maths' ? paperTopics('maths', /2/.test(e.paper) ? 'P2' : 'P1') : paperTopics(e.subj);
+      const ts = examTopics(e);
       const left = ts.reduce((n, t) => n + est(t, data).left, 0), total = ts.reduce((n, t) => n + est(t, data).total, 0);
       const days = daysTo(e.when); return { e, ts, left, total, days, perDay: days > 0 ? left / days : null };
     });
@@ -60,40 +77,50 @@
   /* ---------------------------------------------------------------- decrypt and index the notes */
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   function index(data) {
-    D.figs = data.figs || {}; D.list = [];
-    ['maths', 'phys', 'chem'].forEach((sj) => (data.topics[sj] || []).forEach((t) => { t.subj = sj; t.practice = (data.practice || {})[t.id] || []; D.list.push(t); D.TOPIC[t.id] = t; t.sections.forEach((s, i) => { D.SECTION[s.id] = { topic: t, sec: s, idx: i }; }); t.practice.forEach((q) => { D.QUESTION[q.id] = { topic: t, q }; }); }));
+    Object.assign(D.figs, data.figs || {});
+    ['maths', 'phys', 'chem', 'life'].forEach((sj) => (data.topics[sj] || []).forEach((t) => { if (D.TOPIC[t.id]) return; t.subj = sj; t.practice = (data.practice || {})[t.id] || []; D.list.push(t); D.TOPIC[t.id] = t; t.sections.forEach((s, i) => { D.SECTION[s.id] = { topic: t, sec: s, idx: i }; }); t.practice.forEach((q) => { D.QUESTION[q.id] = { topic: t, q }; }); }));
   }
-  ADV.loadContent = async function () {
-    if (state.contentReady || state.contentLoading) return; state.contentLoading = true; state.contentError = '';
-    try {
-      if (window.ADV_DEV_CONTENT) index(window.ADV_DEV_CONTENT);
-      else {
-        if (!window.crypto || !crypto.subtle || typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open the notes. Update Chrome or Safari, or use another browser.');
-        const [rows, buf] = await Promise.all([
-          sb.select('content_keys', { select: 'k', id: 'eq.' + (CFG.contentKeyId || 'v1') }),
-          fetch(CFG.contentUrl || ('content.bin?v=' + (CFG.contentVersion || '1'))).then((r) => { if (!r.ok) throw new Error('The notes could not be downloaded (' + r.status + ').'); return r.arrayBuffer(); })
-        ]);
-        if (!rows.length) throw new Error('locked');
-        const key = await crypto.subtle.importKey('raw', b64(rows[0].k), 'AES-GCM', false, ['decrypt']);
+  /* One encrypted file per grade (Grade 12 = content.bin, content-10.bin, content-11.bin): a learner downloads only the
+     grade they open; other grades load when they are opened. */
+  const LOADED = {}, LOADING = {}; let keyP = null;
+  const gradeHasNotes = (gr) => OUT.some((t) => grOf(t) === gr);
+  const binUrl = (gr) => (gr === 12 && CFG.contentUrl) || ((gr === 12 ? 'content.bin' : 'content-' + gr + '.bin') + '?v=' + (CFG.contentVersion || '1'));
+  ADV.hasGrade = (gr) => { gr = Number(gr) || 12; return !!LOADED[gr] || !gradeHasNotes(gr); };
+  ADV.loadContent = function (gr) {
+    gr = Number(gr) || ADV.viewGrade();
+    if (window.ADV_DEV_CONTENT) {   // local tests: everything in one plain bundle
+      if (!state.contentReady) { index(window.ADV_DEV_CONTENT); [10, 11, 12].forEach((g) => { LOADED[g] = true; }); state.contentReady = true; ADV.loadNotes(); }
+      return Promise.resolve();
+    }
+    if (ADV.hasGrade(gr)) return Promise.resolve();
+    if (LOADING[gr]) return LOADING[gr];
+    if (!window.crypto || !crypto.subtle || typeof DecompressionStream === 'undefined') { state.contentError = 'This browser is too old to open the notes. Update Chrome or Safari, or use another browser.'; return Promise.resolve(); }
+    state.contentLoading = true; state.contentError = '';
+    const p = (async () => {
+      try {
+        if (!keyP) keyP = sb.select('content_keys', { select: 'k', id: 'eq.' + (CFG.contentKeyId || 'v1') }).then((rows) => { if (!rows.length) throw new Error('locked'); return crypto.subtle.importKey('raw', b64(rows[0].k), 'AES-GCM', false, ['decrypt']); });
+        const [key, buf] = await Promise.all([keyP, fetch(binUrl(gr)).then((r) => { if (!r.ok) throw new Error('The notes could not be downloaded (' + r.status + ').'); return r.arrayBuffer(); })]);
         const bytes = new Uint8Array(buf);
         const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(0, 12) }, key, bytes.slice(12));
         const text = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
         index(JSON.parse(text));
+        LOADED[gr] = true;
+        if (!state.contentReady) { state.contentReady = true; ADV.loadNotes(); }
+      } catch (e) {
+        console.error(e); keyP = null;
+        state.contentError = e.message === 'locked' ? 'locked' : (navigator.onLine === false ? 'You are offline – connect to the internet to open the notes.' : ADV.errMsg(e));
+        if (e.message === 'locked') state.approved = false;
       }
-      state.contentReady = true;
-      ADV.loadNotes();
-    } catch (e) {
-      console.error(e);
-      state.contentError = e.message === 'locked' ? 'locked' : (navigator.onLine === false ? 'You are offline – connect to the internet to open the notes.' : ADV.errMsg(e));
-      if (e.message === 'locked') state.approved = false;
-    }
-    state.contentLoading = false;
+    })().then(() => { delete LOADING[gr]; state.contentLoading = Object.keys(LOADING).length > 0; });
+    LOADING[gr] = p; return p;
   };
-  const ready = () => state.approved && state.contentReady;
+  const ready = (gr) => state.approved && ADV.hasGrade(gr || ADV.viewGrade());
+  /* the notes for this grade are not open yet: start loading them (once) and re-render when they arrive */
+  const ensureGrade = (gr) => { if (state.approved && !ADV.hasGrade(gr) && !LOADING[gr] && !state.contentError) ADV.loadContent(gr).then(() => ADV.render()); };
   const waitCard = () => state.contentError && state.contentError !== 'locked'
     ? '<div class="card"><b>The notes did not open</b><p class="small muted" style="margin-top:4px">' + esc(state.contentError) + '</p><div class="row" style="margin-top:10px"><button class="btn sm" data-action="content-retry">Try again</button></div></div>'
     : '<div class="card"><p class="muted">Opening your study notes…</p></div>';
-  ADV.actions['content-retry'] = async () => { state.contentReady = false; await ADV.loadContent(); ADV.render(); };
+  ADV.actions['content-retry'] = async () => { state.contentError = ''; await ADV.loadContent(ADV.viewGrade()); ADV.render(); };
 
   /* ---------------------------------------------------------------- tutor notes (annotations) */
   state.notes = [];
@@ -139,7 +166,7 @@
   const statusPill = (id) => (P.topics[id] === 'done' ? pill('good', 'Done') : P.topics[id] === 'review' ? pill('warn', 'Needs work') : '');
   function topicCard(t) {
     const e = est(t);
-    return '<button class="topic-card" data-go="topic" data-id="' + esc(t.id) + '"><span class="status">' + (state.approved ? statusPill(t.id) : ICON.lock) + '</span><span class="row" style="gap:6px">' + pill(t.subj, t.paper) + (t.grade && /11/.test(t.grade) ? pill('', 'Gr 11 work') : '') + '</span><span class="t">' + esc(t.title) + '</span><span class="meta">' + esc(t.weight) + '</span>' +
+    return '<button class="topic-card" data-go="topic" data-id="' + esc(t.id) + '"><span class="status">' + (state.approved ? statusPill(t.id) : ICON.lock) + '</span><span class="row" style="gap:6px">' + pill(t.subj, t.paper) + (grOf(t) === 12 && t.grade && /11/.test(t.grade) ? pill('', 'Gr 11 work') : '') + '</span><span class="t">' + esc(t.title) + '</span><span class="meta">' + esc(t.weight) + '</span>' +
       '<span class="est-line">' + ICON.clock + '<span>≈ ' + fmt.mins(e.total) + ' to master' + (state.approved && e.left < e.total ? ' · <b>' + fmt.mins(e.left) + ' left</b>' : '') + '</span></span>' +
       (state.approved ? barHtml(e.pct) : '') + '<span class="meta">' + t.sections.length + ' sections · ' + (t.pc || 0) + ' exam questions · ' + (t.qc || 0) + ' quiz questions</span></button>';
   }
@@ -151,32 +178,43 @@
         (L.perDay && !written ? '<p class="small" style="margin-top:6px">' + ICON.clock + ' About <b>' + fmt.mins(Math.ceil(L.perDay / 5) * 5) + ' a day</b> until ' + esc(fmt.date(e.when)) + '</p>' : '') + '</div>';
     }).join('') + '</div>';
   }
+  function gradeSeg() {
+    const gr = ADV.viewGrade();
+    return '<div class="seg" role="group" aria-label="Grade">' + ADV.GRADES.map((g) => '<button class="' + (g === gr ? 'on' : '') + '" data-action="gr-set" data-id="' + g + '">Grade ' + g + '</button>').join('') + '</div>';
+  }
+  ADV.actions['gr-set'] = (a) => { state.gr = Number(a.dataset.id); state.mock = null; ADV.render(); };
   function viewSubject(tab) {
-    const subs = tab === 'maths' ? ['maths'] : ['phys', 'chem'];
-    const loads = paperLoad().filter((L) => subs.includes(L.e.subj));
-    let out = '<div class="stack"><div><span class="eyebrow">' + (tab === 'maths' ? 'Mathematics · Paper 1 and Paper 2' : 'Physical Sciences · Paper 1 (Physics) and Paper 2 (Chemistry)') + '</span><h1>' + (tab === 'maths' ? 'Mathematics' : 'Physical Sciences') + '</h1>' +
-      '<p class="small muted" style="margin-top:4px">Study time per topic = reading the notes and redoing the worked examples + the exam questions at exam pace (about 1,2 minutes per mark) + the quiz.' + (state.approved ? ' Tick sections off as you go and the time left updates.' : '') + '</p></div>';
-    if (!state.approved) out += '<div class="callout row">' + ICON.lock + '<span>The notes open once the tutor approves your account (usually with your first confirmed lesson). <button class="btn sm primary" data-go="tab" data-id="book">Book a lesson</button></span></div>';
+    const subs = TABSUB[tab] || ['maths']; const gr = ADV.viewGrade();
+    const loads = gr === 12 ? paperLoad().filter((L) => subs.includes(L.e.subj)) : [];
+    const head = tab === 'maths' ? 'Mathematics · Paper 1 and Paper 2' : tab === 'life' ? 'Life Sciences · Paper 1 and Paper 2' : 'Physical Sciences · Paper 1 (Physics) and Paper 2 (Chemistry)';
+    const has = OUT.some((t) => subs.includes(t.subj) && grOf(t) === gr);
+    let out = '<div class="stack"><div><span class="eyebrow">' + head + '</span><h1>' + esc(SUBJ_LONG[subs[0]]) + ' · Grade ' + gr + '</h1>' +
+      '<p class="small muted" style="margin-top:4px">Study time per topic = reading the notes and redoing the worked examples + the exam questions at exam pace (about 1,2 minutes per mark) + the quiz.' + (state.approved ? ' Tick sections off as you go and the time left updates.' : '') + '</p></div>' + gradeSeg();
+    if (!state.approved) out += '<div class="callout row">' + ICON.lock + '<span>The notes open once the tutor approves your account (usually with your first confirmed lesson). ' + (state.isAdmin || state.isTutor ? '' : '<button class="btn sm primary" data-go="tab" data-id="book">Book a lesson</button>') + '</span></div>';
+    if (!has) return out + '<div class="card"><p class="muted">The Grade ' + gr + ' ' + esc(SUBJ_LONG[subs[0]]) + ' notes are being prepared. Choose another grade above, or ask your tutor.</p></div></div>';
     out += loadBanner(loads);
-    out += '<div class="card search"><input id="q" type="search" placeholder="Find a topic or section (e.g. tangent, Doppler, Kc)" value="' + esc(state.q || '') + '" aria-label="Search topics"></div><div id="subj-list">' + subjectList(subs) + '</div>';
+    if (gr !== 12) out += '<p class="small muted">Grade ' + gr + ' writes school (or provincial) exams in June and November. The papers below follow the CAPS split; your school confirms the exact scope.</p>';
+    out += '<div class="card search"><input id="q" type="search" placeholder="Find a topic or section" value="' + esc(state.q || '') + '" aria-label="Search topics"></div><div id="subj-list">' + subjectList(subs, gr) + '</div>';
     return out + '</div>';
   }
-  function subjectList(subs) {
+  function subjectList(subs, gr) {
+    gr = gr || ADV.viewGrade();
     const q = (state.q || '').trim().toLowerCase(); const match = (t) => !q || (t.title + ' ' + t.sections.map((s) => s.title).join(' ')).toLowerCase().includes(q);
     let out = '';
-    subs.forEach((sj) => (sj === 'maths' ? ['P1', 'P2'] : sj === 'phys' ? ['P1'] : ['P2']).forEach((pp) => {
-      const list = paperTopics(sj, pp).filter(match); if (!list.length) return;
-      const w = (WEIGHT[sj] || {})[pp] || [];
-      out += '<section class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between">' + '<div class="row">' + pill(sj, SUBJ[sj].short) + '<h2>' + esc(sj === 'maths' ? 'Paper ' + pp.slice(1) : pp === 'P1' ? 'Paper 1 · Physics' : 'Paper 2 · Chemistry') + '</h2></div></div>' +
-        '<p class="small muted" style="margin-top:6px">Mark weighting: ' + w.map(([n, m]) => esc(n) + ' <b>' + m + '</b>').join(' · ') + ' · total 150.</p>' +
+    subs.forEach((sj) => PAPERS[sj].forEach((pp) => {
+      const list = paperTopics(sj, pp, gr).filter(match); if (!list.length) return;
+      const w = gr === 12 ? ((WEIGHT[sj] || {})[pp] || []) : [];
+      out += '<section class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between">' + '<div class="row">' + pill(sj, SUBJ[sj].short) + '<h2>' + esc(paperName(sj, pp)) + '</h2></div><span class="small muted">' + list.length + ' topic' + (list.length === 1 ? '' : 's') + '</span></div>' +
+        (w.length ? '<p class="small muted" style="margin-top:6px">Mark weighting: ' + w.map(([n, m]) => esc(n) + ' <b>' + m + '</b>').join(' · ') + ' · total 150.</p>' : '') +
         '<div class="grid cols-3" style="margin-top:14px">' + list.map(topicCard).join('') + '</div></section>';
     }));
     return out || '<div class="card"><p class="muted">No topic matches “' + esc(q) + '”.</p></div>';
   }
   ADV.views.maths = () => viewSubject('maths');
   ADV.views.sci = () => viewSubject('sci');
+  ADV.views.life = () => viewSubject('life');
   const prevInput = ADV.onInput;
-  ADV.onInput = function (e) { if (prevInput) prevInput(e); if (e.target.id === 'q') { state.q = e.target.value; const box = $('#subj-list'); if (box) box.innerHTML = subjectList(state.tab === 'maths' ? ['maths'] : ['phys', 'chem']); } };
+  ADV.onInput = function (e) { if (prevInput) prevInput(e); if (e.target.id === 'q') { state.q = e.target.value; const box = $('#subj-list'); if (box) box.innerHTML = subjectList(TABSUB[state.tab] || ['maths']); } };
 
   /* ---------------------------------------------------------------- topic page */
   const safeFig = (x) => { try { return window.renderFig(x); } catch (e) { return ''; } };
@@ -209,17 +247,18 @@
   }
   ADV.views.topic = function (id) {
     const o = OT[id]; if (!o) return '<div class="card"><p>Topic not found.</p></div>';
+    state.gr = grOf(o);   // "back" returns to this topic's grade
     if (!state.approved) return lockedTopic(o);
-    if (!state.contentReady) { if (!state.contentLoading && !state.contentError) ADV.loadContent().then(() => ADV.render()); return state.contentError === 'locked' ? lockedTopic(o) : waitCard(); }
+    if (!ADV.hasGrade(grOf(o))) { ensureGrade(grOf(o)); return state.contentError === 'locked' ? lockedTopic(o) : waitCard(); }
     const t = D.TOPIC[id]; if (!t) return lockedTopic(o);
     const e = est(o); const st = P.topics[id] || '';
     return '<div class="stack" id="topic-root">' +
-      '<div class="row" style="justify-content:space-between"><button class="btn sm ghost" data-go="tab" data-id="' + ADV.topicTab(id) + '">← ' + (t.subj === 'maths' ? 'Mathematics' : 'Physical Sciences') + '</button>' + (state.isAdmin || state.isTutor ? '<button class="btn sm" data-action="pen-page">' + ICON.pen + 'Pen on this page</button>' : '') + '</div>' +
+      '<div class="row" style="justify-content:space-between"><button class="btn sm ghost" data-go="tab" data-id="' + ADV.topicTab(id) + '">← ' + esc(SUBJ_LONG[t.subj] || 'Topics') + ' · Grade ' + grOf(o) + '</button>' + (state.isAdmin || state.isTutor ? '<button class="btn sm" data-action="pen-page">' + ICON.pen + 'Pen on this page</button>' : '') + '</div>' +
       '<div class="card protect"><div class="row" style="gap:6px">' + pill(t.subj, SUBJ[t.subj].short + ' · ' + t.paper) + (t.grade ? pill('', t.grade) : '') + statusPill(id) + '</div><h1 style="margin-top:8px">' + esc(t.title) + '</h1>' +
       '<p style="margin-top:8px;max-width:75ch">' + T(t.overview) + '</p>' +
       '<div class="row" style="margin-top:12px"><span class="pill accent wrap">' + esc(t.weight) + '</span>' + (t.book ? '<span class="pill">Textbook ' + esc(t.book.chapter) + ' · p. ' + esc(t.book.pages) + '</span>' : '') + '</div>' +
       '<div class="est-box"><div><span class="eyebrow">Study time</span><b>≈ ' + fmt.mins(e.total) + '</b></div><div><span class="eyebrow">Notes & examples</span>' + fmt.mins(e.notes) + '</div><div><span class="eyebrow">Exam questions</span>' + fmt.mins(e.prac) + '</div><div><span class="eyebrow">Quiz</span>' + fmt.mins(e.quiz) + '</div><div><span class="eyebrow">Left</span><b>' + fmt.mins(e.left) + '</b></div></div>' + barHtml(e.pct) +
-      '<div class="row" style="margin-top:14px"><button class="btn sm ' + (st === 'done' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="done">' + ICON.check + 'Topic done</button><button class="btn sm ' + (st === 'review' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="review">Needs work</button>' + (t.ref ? ADV.btnLink(t.ref.url, t.ref.label, 'sm ghost', ICON.ext) : '') + (t.practice.length ? '<button class="btn sm ghost" data-action="scroll" data-id="practice">' + t.practice.length + ' exam questions</button>' : '') + '<button class="btn sm ghost" data-action="scroll" data-id="quiz">Quiz</button>' + (state.isAdmin || state.isTutor ? '' : '<button class="btn sm ghost" data-action="book-topic-go" data-id="' + esc(id) + '">Book a lesson on this</button>') + '</div>' +
+      '<div class="row" style="margin-top:14px"><button class="btn sm ' + (st === 'done' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="done">' + ICON.check + 'Topic done</button><button class="btn sm ' + (st === 'review' ? 'primary' : '') + '" data-action="status" data-id="' + esc(id) + '" data-val="review">Needs work</button>' + (t.ref ? ADV.btnLink(t.ref.url, t.ref.label, 'sm ghost wrap', ICON.ext) : '') + (t.practice.length ? '<button class="btn sm ghost" data-action="scroll" data-id="practice">' + t.practice.length + ' exam questions</button>' : '') + '<button class="btn sm ghost" data-action="scroll" data-id="quiz">Quiz</button>' + (state.isAdmin || state.isTutor ? '' : '<button class="btn sm ghost" data-action="book-topic-go" data-id="' + esc(id) + '">Book a lesson on this</button>') + '</div>' +
       '<div style="margin-top:12px">' + notesHtml(id) + '</div></div>' +
       '<div class="stack">' + t.sections.map((s, i) => secHtml(t, s, i)).join('') + '</div>' +
       practiceHtml(t) +
@@ -387,6 +426,22 @@
       ['Mathematics examination guidelines (DBE, 2021)', 'https://www.education.gov.za/Portals/0/CD/2021%20Exam%20Guidelines/Mathematics%20GR%2012%20Exam%20Guidelines%202021%20Eng.pdf', 'Weighting per topic, examinable proofs, what is excluded.'],
       ['Physical Sciences examination guidelines (DBE, 2021)', 'https://www.education.gov.za/Portals/0/CD/2021%20Exam%20Guidelines/Physical%20Sciences%20GR%2012%20Exam%20Guidelines%202021%20Eng.pdf', 'Definitions markers look for, data sheet, weighting.']] }
   ];
+  const RESOURCES_BY_GRADE = {
+    10: [{ g: 'Free textbooks (CAPS)', items: [
+      ['Siyavula Mathematics Grade 10 (open textbook)', 'https://www.siyavula.com/read/za/mathematics/grade-10', 'Every chapter with worked examples and exercises.'],
+      ['Siyavula Physical Sciences Grade 10 (open textbook)', 'https://www.siyavula.com/read/za/physical-sciences/grade-10', '']] },
+      { g: 'Past papers', items: [['WCED ePortal', 'https://wcedeportal.co.za/', 'Search e.g. "Grade 10 November Mathematics P1" for papers and memos.']] }],
+    11: [{ g: 'Past papers and memos', items: [
+      ['Eastern Cape Grade 11 November 2025 exams', 'https://ecexams.co.za/2025_November_Gr_11_Exams.htm', 'Mathematics, Physical Sciences and Life Sciences – Paper 1 and 2 with memos.'],
+      ['Eastern Cape Grade 11 November 2024 exams', 'https://www.ecexams.co.za/2024_November_Gr_11_Exams.htm', ''],
+      ['WCED ePortal', 'https://wcedeportal.co.za/', 'Search e.g. "Grade 11 November Life Sciences P1".']] },
+      { g: 'Free textbooks (CAPS)', items: [
+      ['Siyavula Mathematics Grade 11 (open textbook)', 'https://www.siyavula.com/read/za/mathematics/grade-11', ''],
+      ['Siyavula Physical Sciences Grade 11 (open textbook)', 'https://www.siyavula.com/read/za/physical-sciences/grade-11', '']] }],
+    12: [{ g: 'Life Sciences', items: [
+      ['Life Sciences examination guidelines (DBE, 2021)', 'https://wcedeportal.co.za/eresource/197781', 'Topics and weighting per paper, what is examinable.'],
+      ['NSC past papers (all subjects, incl. Life Sciences)', 'https://www.education.gov.za/Curriculum/NationalSeniorCertificate(NSC)Examinations/NSCPastExaminationpapers.aspx', '']] }]
+  };
   const PLAN = [
     { d: '2026-10-12', f: ['cubic', 'sequences', 'newton'], note: 'Start with the two P1 topics that open the paper.' }, { d: '2026-10-13', f: ['functions', 'momentum'] },
     { d: '2026-10-14', f: ['calculus', 'projectiles'], note: 'Calculus is 35 marks – give it two sittings.' }, { d: '2026-10-15', f: ['calculus', 'finance', 'wep'] },
@@ -402,11 +457,22 @@
   ];
   const TIPS = ['Read the whole paper in the first 5 minutes and mark the questions you are sure of; do those first.', 'Budget about 1 minute per mark (150 marks in 180 minutes leaves 30 minutes to check).', 'Write the formula first, then substitute: a correct formula earns the method mark even if the arithmetic slips.', 'Never leave a question blank – a partly correct attempt scores; a blank scores zero.', 'Round only at the end; keep full calculator precision in between.', 'Units and directions on every physical answer; "n ∈ ℕ" when you reject a root in patterns.', 'Redraw diagrams in your answer book and mark every given angle, length and tangent.', 'Check your calculator is in DEGREE mode before the trig questions.'];
   const topicChip = (id) => { const o = OT[id]; return o ? '<button class="chipbtn ' + o.subj + '" data-go="topic" data-id="' + esc(id) + '">' + esc(o.title) + '</button>' : ''; };
-  const PAPER_TOPICS = () => ({ mp1: ORDER.P1, mp2: ORDER.P2, pp1: OUT.filter((t) => t.subj === 'phys').map((t) => t.id), pp2: OUT.filter((t) => t.subj === 'chem').map((t) => t.id) });
-  function buildMock(examId) {
-    const ids = PAPER_TOPICS()[examId] || []; const exam = (CFG.exams || []).find((e) => e.id === examId); const picks = [];
-    ids.forEach((id) => { const t = D.TOPIC[id]; if (!t || !t.practice.length) return; const pool = t.practice.slice().sort(() => Math.random() - 0.5); const share = Math.round(150 / ids.length); let m = 0; for (const q of pool) { if (m >= share) break; picks.push(q.id); m += Number(q.marks) || 0; } });
-    state.mock = { examId, title: exam ? exam.subject + ' ' + exam.paper : examId, qids: picks };
+  /* the papers a learner can practise for: the NSC papers in Grade 12, the school/provincial papers in Grades 10–11 */
+  const PAPER_MARKS = { '10:maths': 100 };
+  const mockSets = (gr) => {
+    if (gr === 12) return (CFG.exams || []).map((e) => ({ key: e.id, title: e.subject + ' ' + e.paper, ids: examTopics(e).map((t) => t.id), marks: e.marks || 150 })).filter((m) => m.ids.length);
+    const out = [];
+    [['maths', 'P1'], ['maths', 'P2'], ['phys', 'P1'], ['chem', 'P2'], ['life', 'P1'], ['life', 'P2']].forEach(([sj, pp]) => {
+      const ts = paperTopics(sj, pp, gr).filter((t) => !/^[^≈]*not listed/i.test(t.weight || '')); if (!ts.length) return;   // topics the exam guideline leaves out stay out of mock papers
+      out.push({ key: gr + ':' + sj + ':' + pp, title: 'Grade ' + gr + ' ' + SUBJ_LONG[sj] + ' ' + (sj === 'phys' ? 'Paper 1 (Physics)' : sj === 'chem' ? 'Paper 2 (Chemistry)' : 'Paper ' + pp.slice(1)), ids: ts.map((t) => t.id), marks: PAPER_MARKS[gr + ':' + sj] || 150 });
+    });
+    return out;
+  };
+  function buildMock(key) {
+    const set = mockSets(12).concat(mockSets(10), mockSets(11)).find((m) => m.key === key); if (!set) return;
+    const ids = set.ids; const picks = [];
+    ids.forEach((id) => { const t = D.TOPIC[id]; if (!t || !t.practice.length) return; const pool = t.practice.slice().sort(() => Math.random() - 0.5); const share = Math.round(set.marks / ids.length); let m = 0; for (const q of pool) { if (m >= share) break; picks.push(q.id); m += Number(q.marks) || 0; } });
+    state.mock = { examId: key, title: set.title, qids: picks };
   }
   function mockHtml() {
     const m = state.mock; if (!m) return '';
@@ -419,38 +485,50 @@
   ADV.actions['mock-close'] = () => { state.mock = null; ADV.render(); };
   ADV.actions.plan = (a) => { const id = a.dataset.id; if (P.plan[id]) delete P.plan[id]; else P.plan[id] = 1; save(); reRender(); };
   ADV.views.papers = function () {
-    const exams = CFG.exams || [];
+    const gr = ADV.viewGrade(); const g12 = gr === 12; const exams = g12 ? (CFG.exams || []) : [];
+    const sets = mockSets(gr);
     const timetable = '<div class="card"><span class="eyebrow">Final exam timetable (DBE, Oct/Nov 2026)</span><div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>Paper</th><th>Date</th><th>Time</th><th>Length</th><th>Marks</th></tr></thead><tbody>' +
       exams.map((e) => '<tr><td>' + esc(e.subject + ' ' + e.paper) + '</td><td>' + esc(fmt.long(e.when)) + '</td><td class="mono">' + esc(fmt.time(e.when)) + '</td><td>' + e.hours + ' h</td><td>' + e.marks + '</td></tr>').join('') + '</tbody></table></div><p class="small muted" style="margin-top:8px">Confirm with the school; the DBE can amend the timetable.</p></div>';
-    const total = OUT.reduce((n, t) => n + (t.pc || 0), 0);
-    const mock = '<div class="card"><span class="eyebrow">Practice under exam conditions</span><h3 style="margin-top:4px">Generate a mock paper</h3><p class="small muted" style="margin-top:4px">Builds a fresh 150-mark paper from the ' + total + ' exam-style questions, spread over the paper\'s topics. New questions every time.</p><div class="row" style="margin-top:10px">' +
-      (ready() ? exams.map((e) => '<button class="btn" data-action="mock" data-id="' + e.id + '">' + esc(e.subject + ' ' + e.paper) + '</button>').join('') : '<span class="small muted">' + ICON.lock + ' Opens once the tutor approves your account.</span>') + '</div></div>' + (ready() ? mockHtml() : '');
+    const total = OUT.filter((t) => grOf(t) === gr).reduce((n, t) => n + (t.pc || 0), 0);
+    const mock = '<div class="card"><span class="eyebrow">Practice under exam conditions</span><h3 style="margin-top:4px">Generate a Grade ' + gr + ' mock paper</h3><p class="small muted" style="margin-top:4px">Builds a fresh full-length paper from the ' + total + ' Grade ' + gr + ' exam-style questions, spread over the paper\'s topics. New questions every time.</p><div class="row" style="margin-top:10px">' +
+      (!sets.length ? '<span class="small muted">The Grade ' + gr + ' questions are being prepared.</span>' : ready(gr) ? sets.map((m) => '<button class="btn" data-action="mock" data-id="' + esc(m.key) + '">' + esc(m.title.replace(/^Grade \d+ /, '')) + '</button>').join('') : state.approved ? (ensureGrade(gr), '<span class="small muted">' + (state.contentError && state.contentError !== 'locked' ? esc(state.contentError) + ' <button class="btn sm" data-action="content-retry">Try again</button>' : 'Opening the Grade ' + gr + ' questions…') + '</span>') : '<span class="small muted">' + ICON.lock + ' Opens once the tutor approves your account.</span>') + '</div></div>' + (ready(gr) ? mockHtml() : '');
     const todayKey = fmt.key(ADV.now());
     const plan = '<div class="card"><span class="eyebrow">Study plan</span><h3 style="margin-top:4px">From today to the last paper</h3><p class="small muted" style="margin-top:4px">Highest-weight topics first, a full past paper every second day, light revision the day before each exam. Tick days off as you finish them.</p><div style="margin-top:12px">' +
       PLAN.filter((p) => p.d >= todayKey || P.plan[p.d]).map((p) => { const ex = exams.find((e) => e.id === p.exam); const done = !!P.plan[p.d]; const mins = p.f.reduce((n, id) => n + (OT[id] ? est(OT[id]).total : 0), 0); return '<div class="plan-day ' + (p.exam ? 'exam' : '') + '"><div class="d">' + (p.d === todayKey ? '<span class="pill accent">Today</span><br>' : '') + esc(fmt.date(p.d + 'T12:00:00+02:00')) + '</div><div style="min-width:0"><div class="row" style="gap:6px">' + (p.exam ? '<strong>' + esc(ex ? ex.subject + ' ' + ex.paper : '') + ' – exam day</strong>' : p.f.map(topicChip).join('') + '<button class="chipbtn ' + (done ? 'chem' : '') + '" data-action="plan" data-id="' + p.d + '">' + (done ? 'Done' : 'Mark done') + '</button>') + '</div>' + (p.note ? '<p class="small muted" style="margin-top:4px">' + esc(p.note) + '</p>' : '') + '</div></div>'; }).join('') + '</div></div>';
     const res = RESOURCES.map((g) => '<div class="card"><h3>' + esc(g.g) + '</h3><div class="stack" style="margin-top:10px;gap:10px">' + g.items.map(([n, u, d]) => '<div><a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(n) + '</a>' + (d ? '<div class="small muted">' + esc(d) + '</div>' : '') + '</div>').join('') + '</div></div>').join('');
     const drive = state.priv.class && state.priv.class.drive ? '<div class="card row" style="justify-content:space-between"><div><span class="eyebrow">Class materials</span><h3 style="margin-top:4px">Shared class folder</h3><p class="small muted">Papers, lesson notes and recordings the tutor shares.</p></div>' + ADV.btnLink(state.priv.class.drive, 'Open the class folder', 'primary', ICON.ext) + '</div>' : '';
     const tips = '<div class="card"><span class="eyebrow">Exam technique</span><ul style="margin:8px 0 0;padding-left:20px;display:grid;gap:6px">' + TIPS.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></div>';
-    return '<div class="stack"><div><span class="eyebrow">Papers</span><h1>Exam papers, plan and resources</h1></div>' + timetable + loadBanner(paperLoad()) + mock + '<h2>Study plan</h2>' + plan + '<h2>Past papers and free resources</h2>' + drive + res + tips + '</div>';
+    const resG = (RESOURCES_BY_GRADE[gr] || []).map((g) => '<div class="card"><h3>' + esc(g.g) + '</h3><div class="stack" style="margin-top:10px;gap:10px">' + g.items.map(([n, u, d]) => '<div><a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(n) + '</a>' + (d ? '<div class="small muted">' + esc(d) + '</div>' : '') + '</div>').join('') + '</div></div>').join('');
+    return '<div class="stack"><div><span class="eyebrow">Papers</span><h1>Exam papers, plan and resources</h1></div>' + gradeSeg() + (g12 ? timetable + loadBanner(paperLoad().filter((L) => mySubjects().has(L.e.subj))) : '') + mock + (g12 ? '<h2>Study plan</h2>' + plan : '') + '<h2>Past papers and free resources</h2>' + drive + resG + (g12 ? res : '') + tips + '</div>';
   };
 
   /* ---------------------------------------------------------------- progress */
-  ADV.progressTable = function (data, interactive) {
-    const p = data || P;
+  ADV.progressTable = function (data, interactive, gr) {
+    const p = data || P; const rows = gr ? OUT.filter((t) => grOf(t) === Number(gr)) : OUT;
     return '<div class="table-wrap"><table><thead><tr><th>Topic</th><th>Status</th><th>Sections</th><th>Exam questions</th><th>Quiz</th><th>Time left</th></tr></thead><tbody>' +
-      OUT.map((t) => { const e = est(t, p); const st = p.topics[t.id]; const pd = (t.pq || []).filter(([id]) => p.practice[id]).length; return '<tr><td>' + pill(t.subj, SUBJ[t.subj].short) + ' ' + (interactive ? '<button class="chipbtn" data-go="topic" data-id="' + esc(t.id) + '">' + esc(t.title) + '</button>' : esc(t.title)) + '</td><td>' + (st === 'done' ? pill('good', 'Done') : st === 'review' ? pill('warn', 'Needs work') : '<span class="small muted">–</span>') + '</td><td class="mono">' + e.secsDone + '/' + t.sections.length + '</td><td class="mono">' + pd + '/' + (t.pc || 0) + '</td><td class="mono">' + (p.quiz[t.id] ? p.quiz[t.id].best + '/' + p.quiz[t.id].total : '–') + '</td><td class="mono">' + fmt.mins(e.left) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      rows.map((t) => { const e = est(t, p); const st = p.topics[t.id]; const pd = (t.pq || []).filter(([id]) => p.practice[id]).length; return '<tr><td>' + pill(t.subj, SUBJ[t.subj].short) + ' ' + (interactive ? '<button class="chipbtn" data-go="topic" data-id="' + esc(t.id) + '">' + esc(t.title) + '</button>' : esc(t.title)) + '</td><td>' + (st === 'done' ? pill('good', 'Done') : st === 'review' ? pill('warn', 'Needs work') : '<span class="small muted">–</span>') + '</td><td class="mono">' + e.secsDone + '/' + t.sections.length + '</td><td class="mono">' + pd + '/' + (t.pc || 0) + '</td><td class="mono">' + (p.quiz[t.id] ? p.quiz[t.id].best + '/' + p.quiz[t.id].total : '–') + '</td><td class="mono">' + fmt.mins(e.left) + '</td></tr>'; }).join('') + '</tbody></table></div>';
   };
   ADV.views.progress = function () {
-    const loads = paperLoad(); const left = loads.reduce((n, L) => n + (L.days >= 0 ? L.left : 0), 0);
-    const done = OUT.filter((t) => P.topics[t.id] === 'done').length; const secs = Object.keys(P.secs).length; const pq = Object.keys(P.practice).length;
+    const gr = ADV.viewGrade(); const mine = OUT.filter((t) => grOf(t) === gr);
+    const loads = gr === 12 ? paperLoad().filter((L) => mySubjects().has(L.e.subj)) : [];
+    const left = gr === 12 ? loads.reduce((n, L) => n + (L.days >= 0 ? L.left : 0), 0) : mine.reduce((n, t) => n + est(t).left, 0);
+    const done = mine.filter((t) => P.topics[t.id] === 'done').length; const secs = mine.reduce((n, t) => n + t.sections.filter((x) => P.secs[x.id]).length, 0); const pq = mine.reduce((n, t) => n + (t.pq || []).filter(([id]) => P.practice[id]).length, 0);
     return '<div class="stack"><div><span class="eyebrow">Progress</span><h1>Your progress</h1><p class="small muted">Saved to your account, so it follows you to any device. Your tutor sees it too and uses it to plan your lessons.</p></div>' +
-      '<div class="grid cols-4"><div class="cd"><span class="eyebrow">Topics done</span><div class="big">' + done + '<small>/ ' + OUT.length + '</small></div></div><div class="cd"><span class="eyebrow">Sections studied</span><div class="big">' + secs + '</div></div><div class="cd"><span class="eyebrow">Exam questions done</span><div class="big">' + pq + '</div></div><div class="cd"><span class="eyebrow">Study time left</span><div class="big">' + Math.round(left / 60) + '<small>h</small></div></div></div>' +
-      loadBanner(loads) + '<div class="card">' + ADV.progressTable(P, true) + '</div></div>';
+      '<div class="grid cols-4"><div class="cd"><span class="eyebrow">Topics done</span><div class="big">' + done + '<small>/ ' + mine.length + '</small></div></div><div class="cd"><span class="eyebrow">Sections studied</span><div class="big">' + secs + '</div></div><div class="cd"><span class="eyebrow">Exam questions done</span><div class="big">' + pq + '</div></div><div class="cd"><span class="eyebrow">Study time left</span><div class="big">' + Math.round(left / 60) + '<small>h</small></div></div></div>' +
+      gradeSeg() + loadBanner(loads) + '<div class="card">' + ADV.progressTable(P, true, gr) + '</div></div>';
   };
 
   /* ---------------------------------------------------------------- home: study-today card */
   ADV.studyTodayCard = function () {
-    const loads = paperLoad().filter((L) => L.days >= 0 && L.left > 0); if (!loads.length) return '';
+    if (ADV.myGrade() !== 12) {
+      const gr = ADV.myGrade(); const subs = mySubjects(); const nextSecs = [];
+      OUT.filter((t) => grOf(t) === gr && subs.has(t.subj) && P.topics[t.id] !== 'done').forEach((t) => t.sections.forEach((s) => { if (!P.secs[s.id] && nextSecs.length < 4) nextSecs.push({ t, s }); }));
+      if (!nextSecs.length) return '';
+      return '<div class="card"><span class="eyebrow">Study next · Grade ' + gr + '</span><h3 style="margin-top:6px">Pick up where you left off</h3><p class="small muted" style="margin-top:4px">The next sections in your subjects. Tick each one off on the topic page when you have studied it.</p>' +
+        '<div class="stack" style="gap:6px;margin-top:10px">' + nextSecs.map(({ t, s }) => '<button class="next-sec" data-action="open-sec" data-id="' + esc(s.id) + '" data-t="' + esc(t.id) + '">' + (state.approved ? ICON.book : ICON.lock) + '<span><b>' + esc(s.title) + '</b><small>' + esc(SUBJ[t.subj].short + ' · ' + t.title) + '</small></span><span class="mono small">' + s.est + ' min</span></button>').join('') + '</div></div>';
+    }
+    const subsNow = mySubjects();
+    const loads = paperLoad().filter((L) => L.days >= 0 && L.left > 0 && subsNow.has(L.e.subj)); if (!loads.length) return '';
     const perDay = loads.reduce((n, L) => n + (L.perDay || 0), 0); const nextL = loads.slice().sort((a, b) => a.days - b.days)[0];
     const nextSecs = []; nextL.ts.forEach((t) => t.sections.forEach((s) => { if (!P.secs[s.id] && P.topics[t.id] !== 'done' && nextSecs.length < 3) nextSecs.push({ t, s }); }));
     return '<div class="card"><span class="eyebrow">Study today</span><h3 style="margin-top:6px">About ' + fmt.mins(Math.ceil(perDay / 15) * 15) + ' a day</h3><p class="small muted" style="margin-top:4px">That covers every topic before each paper (' + loads.map((L) => esc(L.e.paper.replace(/ \(.*\)/, '')) + ' ' + esc(SUBJ[L.e.subj].short) + ': ' + fmt.mins(L.left) + ' in ' + L.days + ' days').join(' · ') + ').</p>' +
@@ -459,6 +537,16 @@
   ADV.actions['open-sec'] = (a) => { state.openSec = a.dataset.id; ADV.go('study', a.dataset.t); setTimeout(() => { const el = $('#sec-' + CSS.escape(a.dataset.id)); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 120); };
 
   /* ---------------------------------------------------------------- after each render: maths, quiz, watermark */
+  /* tap a diagram to see it large: labels in the big Life Sciences drawings are small on a phone */
+  document.addEventListener('click', (e) => {
+    const svg = e.target.closest && e.target.closest('.fg-fig svg.fig'); if (!svg || svg.closest('.overlay, .figzoom')) return;
+    const z = document.createElement('div'); z.className = 'figzoom protect'; z.setAttribute('role', 'dialog'); z.setAttribute('aria-label', 'Enlarged diagram');
+    z.innerHTML = '<div class="figzoom-bar"><span class="small muted">Scroll or pinch to look around</span><button class="btn sm figzoom-x" type="button">Close ✕</button></div><div class="figzoom-scroll"><div class="figzoom-body">' + svg.closest('.fg-fig').innerHTML + '</div></div>';
+    const onKey = (k) => { if (k.key === 'Escape') close(); };
+    const close = () => { z.remove(); document.removeEventListener('keydown', onKey); };
+    z.addEventListener('click', (ev) => { if (ev.target.closest('.figzoom-x') || ev.target.classList.contains('figzoom-scroll')) close(); });
+    document.addEventListener('keydown', onKey); document.body.appendChild(z); z.querySelector('.figzoom-x').focus({ preventScroll: true });
+  });
   ADV.after.push((view) => {
     if (state.topic && ready()) renderQuiz();
     if (/\\\(|\\\[/.test(view.innerHTML)) ADV.typeset(view);

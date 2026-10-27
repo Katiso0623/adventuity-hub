@@ -167,6 +167,8 @@ for (const gr of [10, 11]) {
 const ALL = [...MATHS, ...PHYS, ...CHEM];   // the Grade 12 Maths / Physical Sciences topics (hand-written descriptions in INFO)
 const N = { topics: TOPICS.length, sections: sum(TOPICS, (t) => t.sections.length), q: sum(TOPICS, (t) => t.nQ),
   qM: sum(TOPICS, (t) => (t.subj === 'maths' ? t.nQ : 0)), qS: sum(TOPICS, (t) => (t.subj === 'phys' || t.subj === 'chem' ? t.nQ : 0)), qL: sum(TOPICS, (t) => (t.subj === 'life' ? t.nQ : 0)) };
+const thousands = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');   // SA style: 1 221
+N.qs = thousands(N.q);
 const GR_PRESENT = [10, 11, 12].filter((g) => TOPICS.some((t) => t.gr === g));
 const GR_SPAN = GR_PRESENT.length > 1 ? 'Grades ' + GR_PRESENT[0] + '–' + GR_PRESENT[GR_PRESENT.length - 1] : 'Grade ' + (GR_PRESENT[0] || 12);
 const pl = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');   // 1 topic, 2 topics
@@ -596,7 +598,7 @@ function buildIndex() {
       `<p>Yes. When the tutor schedules a group class on a topic, you can request a seat in the portal. A seat costs less than a one-on-one lesson; the price per seat is shown on each class.</p>`],
   ];
 
-  const desc = firstFit([`Online Maths, Physical Sciences and Life Sciences lessons for Grades 10–12 across South Africa – matric (NSC) focus, CAPS notes and ${N.q} exam questions.`,
+  const desc = firstFit([`Online Maths, Physical Sciences and Life Sciences lessons for Grades 10–12 across South Africa – matric (NSC) focus, CAPS notes and ${N.qs} exam questions.`,
     'Online Maths, Physical Sciences and Life Sciences lessons for Grades 10–12 across South Africa – matric (NSC) focus, CAPS-aligned notes and questions.'], 155, 'index description');
   const org = {
     '@type': 'EducationalOrganization', '@id': BASE + '#org', name: BRAND, legalName: LEGAL, url: BASE,
@@ -628,7 +630,7 @@ function buildIndex() {
     [IC.book, 'Study notes for every topic', `Clear notes for ${GR_PRESENT.length > 1 ? `${N.topics} topics across ${GR_SPAN}` : `all ${N.topics} Grade 12 topics`}, split into ${N.sections} short sections and grouped by exam paper.`],
     [IC.graph, 'Worked examples with diagrams', 'Graphs, sketches and labelled diagrams drawn right into the worked examples, so you can see what the question describes.'],
     [IC.stairs, '<span class="nw">Step-by-step</span> answers', 'Every worked example is answered one line at a time – formula, numbers substituted, answer with its unit; in Life Sciences each answer point – the way markers want to see it.'],
-    [IC.clip, `${N.q} <span class="nw">exam-style</span> questions`, `Past-paper-style questions with full marking memos: ${andList(qParts)}.`],
+    [IC.clip, `${N.qs} <span class="nw">exam-style</span> questions`, `Past-paper-style questions with full marking memos: ${andList(qParts)}.`],
     [IC.timer, 'Quizzes and mock papers', 'A quick quiz at the end of each topic and mock papers to practise under real exam time.'],
     [IC.cal, 'A study plan to exam day', 'A day-by-day plan that counts down to your NSC exam dates, so every topic is covered in time.'],
     [IC.phone, 'Works on your phone', 'Use it on any phone, tablet or computer, or install it as an app – no app store needed.'],
@@ -638,7 +640,7 @@ function buildIndex() {
     ['Request a lesson', 'Ask for a one-on-one time (60, 90 or 120 minutes) or a seat in a group class, and pick the topics you want to cover.'],
     ['The tutor confirms', 'The tutor accepts your request or suggests another time. You get a notification and a confirmation in the portal, with the payment details.'],
     ['Join the lesson', 'At lesson time tap “Join the lesson”. A private online classroom opens with video, screen share, a whiteboard and chat – in the browser, or the free Jitsi Meet app on a phone.'],
-    ['Keep practising', `Between lessons, approved learners read the notes, worked examples with diagrams and step-by-step answers, ${N.q} exam-style questions with memos, quizzes, mock papers and a study plan.`],
+    ['Keep practising', `Between lessons, approved learners read the notes, worked examples with diagrams and step-by-step answers, ${N.qs} exam-style questions with memos, quizzes, mock papers and a study plan.`],
   ];
   const feeCard = (k, label, paper) => `<article class="card fee">
 <span class="pill ${k}">${paper}</span>
@@ -670,7 +672,7 @@ ${topbar({ current: 'index' })}
 <div>
 <p class="eyebrow">CAPS · Grades 10–12 · NSC finals 2026 · Live online lessons</p>
 <h1 id="h1" style="margin-top:10px">Grade 12 Maths, Physical Sciences &amp; Life Sciences tutoring online</h1>
-<p class="lead">Live one-on-one lessons for matric learners anywhere in South Africa – and for Grades 10 and 11 too. Between lessons, keep practising with study notes, step-by-step worked examples and ${N.q} exam-style questions with memos.</p>
+<p class="lead">Live one-on-one lessons for matric learners anywhere in South Africa – and for Grades 10 and 11 too. Between lessons, keep practising with study notes, step-by-step worked examples and ${N.qs} exam-style questions with memos.</p>
 <div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="${PORTAL}">Sign in</a><a class="btn wa lg" href="#" data-wa hidden target="_blank" rel="noopener">${svg(IC.chat)}WhatsApp us</a></div>
 <ul class="facts" aria-label="At a glance">
 <li><b data-fee-from>${rand(minFee())}</b> per hour, one-on-one</li>
@@ -1619,7 +1621,7 @@ h1{font-size:54px;line-height:1.06;margin:12px 0 0;max-width:900px;font-weight:7
 <div class="brand"><i></i><div><b>ADVENTUITY</b><span>${SLOGAN}</span></div></div>
 <p class="eb">CAPS · NSC · Grades 10–12 · Online · South Africa</p>
 <h1>Grade 12 Maths, Physical Sciences &amp; Life Sciences tutoring online</h1>
-<p class="sub">Live one-on-one lessons for matric – and Grades 10 and 11 – with study notes, worked examples and ${N.q} exam-style questions with memos.</p>
+<p class="sub">Live one-on-one lessons for matric – and Grades 10 and 11 – with study notes, worked examples and ${N.qs} exam-style questions with memos.</p>
 <div class="chips"><span class="chip s">Book a lesson</span><span class="chip">Mathematics</span><span class="chip">Physical Sciences</span><span class="chip">Life Sciences</span><span class="chip">Grades 10–12</span></div>
 </div></body></html>`;
 }

@@ -6,7 +6,7 @@
   --bg:#f3f5f8; --surface:#ffffff; --surface-2:#e8edf3; --ink:#1c3246; --ink-2:#55687a; --line:#d2dae3; --grid:rgba(28,50,70,.07);
   --accent:#1c3246; --accent-ink:#ffffff; --accent-soft:#e2eaf2;
   --fig1:#2b63a8; --fig2:#d9661e; --fig3:#1f7a4d; --fig4:#7a4bc2; --grid-line:#e3e8ee;
-  --maths:#2b63a8; --maths-soft:#e3ecf8; --phys:#6f4bc2; --phys-soft:#ece6fa; --chem:#1f7a4d; --chem-soft:#e0f2e8;
+  --maths:#2b63a8; --maths-soft:#e3ecf8; --phys:#6f4bc2; --phys-soft:#ece6fa; --chem:#1f7a4d; --chem-soft:#e0f2e8; --life:#b5531c; --life-soft:#fbe9dc;
   --good:#1f7a4d; --warn:#a9671a; --bad:#c2362e; --good-soft:#e0f2e8; --warn-soft:#fbeedd; --bad-soft:#fae3e1;
   --shadow:0 1px 2px rgba(21,33,58,.06),0 8px 24px -12px rgba(21,33,58,.18);
   --display:"Poppins","Segoe UI",system-ui,sans-serif; --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -16,14 +16,14 @@
   --bg:#0e1823; --surface:#152331; --surface-2:#1e3041; --ink:#e8eef4; --ink-2:#a4b4c4; --line:#2a3e51; --grid:rgba(232,238,244,.06);
   --accent:#7fb7e3; --accent-ink:#0b1620; --accent-soft:#1c3246;
   --fig1:#7eaaea; --fig2:#f39a52; --fig3:#58cf8a; --fig4:#b39cf7; --grid-line:#22344a;
-  --maths:#7eaaea; --maths-soft:#1b2f4d; --phys:#b39cf7; --phys-soft:#2b2250; --chem:#58cf8a; --chem-soft:#143826;
+  --maths:#7eaaea; --maths-soft:#1b2f4d; --phys:#b39cf7; --phys-soft:#2b2250; --chem:#58cf8a; --chem-soft:#143826; --life:#f0a06a; --life-soft:#3f2414;
   --good:#58cf8a; --warn:#f0b35b; --bad:#f08a80; --good-soft:#143826; --warn-soft:#3a2a12; --bad-soft:#3f1d1a;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.6); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1823; --surface:#152331; --surface-2:#1e3041; --ink:#e8eef4; --ink-2:#a4b4c4; --line:#2a3e51; --grid:rgba(232,238,244,.06);
   --accent:#7fb7e3; --accent-ink:#0b1620; --accent-soft:#1c3246;
   --fig1:#7eaaea; --fig2:#f39a52; --fig3:#58cf8a; --fig4:#b39cf7; --grid-line:#22344a;
-  --maths:#7eaaea; --maths-soft:#1b2f4d; --phys:#b39cf7; --phys-soft:#2b2250; --chem:#58cf8a; --chem-soft:#143826;
+  --maths:#7eaaea; --maths-soft:#1b2f4d; --phys:#b39cf7; --phys-soft:#2b2250; --chem:#58cf8a; --chem-soft:#143826; --life:#f0a06a; --life-soft:#3f2414;
   --good:#58cf8a; --warn:#f0b35b; --bad:#f08a80; --good-soft:#143826; --warn-soft:#3a2a12; --bad-soft:#3f1d1a;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.6); color-scheme:dark}
 *{box-sizing:border-box}
@@ -95,6 +95,7 @@ main{padding-block:22px 48px}
 .pill.maths{background:var(--maths-soft);color:var(--maths)}
 .pill.phys{background:var(--phys-soft);color:var(--phys)}
 .pill.chem{background:var(--chem-soft);color:var(--chem)}
+.pill.life{background:var(--life-soft);color:var(--life)}
 .pill.good{background:var(--good-soft);color:var(--good)}
 .pill.warn{background:var(--warn-soft);color:var(--warn)}
 .pill.bad{background:var(--bad-soft);color:var(--bad)}
@@ -175,6 +176,7 @@ th{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--in
 .chipbtn.maths{border-color:var(--maths);color:var(--maths)}
 .chipbtn.phys{border-color:var(--phys);color:var(--phys)}
 .chipbtn.chem{border-color:var(--chem);color:var(--chem)}
+.chipbtn.life{border-color:var(--life);color:var(--life)}
 .search{display:flex;gap:8px;align-items:center}
 .search input{flex:1}
 .kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--surface-2)}
@@ -222,6 +224,11 @@ th{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--in
 .q-num{font-family:var(--mono);font-weight:600;font-size:.88rem;min-width:2.6rem}
 .q-txt{min-width:0;overflow-wrap:anywhere}
 .q-mk{font-family:var(--mono);font-size:.85rem;color:var(--ink-2);white-space:nowrap}
+/* keep algebra like "100x 5" as typed: no contextual "x"→"×" substitution in the body font */
+body{font-feature-settings:"calt" 0;font-variant-ligatures:no-contextual}
+
+/* keep MathJax's hidden screen-reader copy inside its formula box (a long formula must not widen the page on a phone) */
+mjx-container mjx-assistive-mml{width:1px!important;height:1px!important;overflow:hidden!important}
 
 /* ---- figures (figlib.js classes, theme-aware) ---- */
 .fg-fig{margin:8px 0 4px;display:grid;justify-items:center;gap:6px}
@@ -242,6 +249,38 @@ svg.fig .thin{stroke-width:1.2}
 svg.fig .shade{fill:var(--fig1);fill-opacity:.13;stroke:none}
 svg.fig .arrow{stroke-width:2.2;stroke:var(--fig2)}
 svg.fig marker path{fill:var(--ink-2)}
+/* data tables and schematic drawings (Life Sciences, apparatus) */
+.fig-table{width:100%;max-width:640px;overflow-x:auto}
+.fig-table table{width:100%;border-collapse:collapse;font-size:.88rem;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.fig-table caption{caption-side:top;text-align:left;font-weight:600;font-size:.85rem;padding:0 0 6px;color:var(--ink)}
+.fig-table th,.fig-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:center;font-variant-numeric:tabular-nums}
+.fig-table thead th{background:var(--surface-2);font-weight:600}
+.fig-table tbody th{text-align:left;font-weight:600}
+svg.fig.bio .line{stroke:var(--ink);stroke-width:1.6;fill:none}
+svg.fig.bio .thick{stroke-width:2.6} svg.fig.bio .thin{stroke-width:1}
+svg.fig.bio .ink{fill:var(--ink);stroke:none} svg.fig.bio .none{fill:none} svg.fig.bio .dot{fill:var(--ink);stroke:none}
+svg.fig.bio .soft{fill:var(--surface-2);stroke:var(--ink-2);stroke-width:1.2}
+svg.fig.bio .fa{fill:var(--fig1);fill-opacity:.18;stroke:var(--fig1);stroke-width:1.6}
+svg.fig.bio .fb{fill:var(--fig2);fill-opacity:.2;stroke:var(--fig2);stroke-width:1.6}
+svg.fig.bio .fc{fill:var(--fig3);fill-opacity:.18;stroke:var(--fig3);stroke-width:1.6}
+svg.fig.bio .fd{fill:var(--fig4);fill-opacity:.18;stroke:var(--fig4);stroke-width:1.6}
+svg.fig.bio .fe{fill:#c2362e;fill-opacity:.16;stroke:#c2362e;stroke-width:1.6}
+svg.fig.bio .ff{fill:#d4a017;fill-opacity:.2;stroke:#a87f0d;stroke-width:1.6}
+svg.fig.bio .lbl{font-size:13px;fill:var(--ink);font-family:var(--body);stroke:none}
+svg.fig.bio .lbl-s{font-size:11px;fill:var(--ink-2);font-family:var(--body);stroke:none}
+svg.fig.bio .lbl-i{font-size:13px;fill:var(--ink);font-style:italic;font-family:var(--body);stroke:none}
+svg.fig.bio .arrow{stroke:var(--fig2);stroke-width:2;fill:none}
+svg.fig.bio text.c0{fill:var(--fig1)} svg.fig.bio text.c1{fill:var(--fig2)} svg.fig.bio text.c2{fill:var(--fig3)} svg.fig.bio text.c3{fill:var(--fig4)}
+.fig-table th,.fig-table caption{text-transform:none;letter-spacing:normal}
+/* tap-to-enlarge for diagrams */
+.fg-fig svg.fig{cursor:zoom-in}
+.figzoom{position:fixed;inset:0;z-index:80;background:var(--bg);display:flex;flex-direction:column}
+.figzoom-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.figzoom-scroll{flex:1 1 auto;overflow:auto;padding:14px 12px 28px;overscroll-behavior:contain}
+.figzoom-body{width:max(100%,720px);max-width:1200px;margin:0 auto}
+.figzoom-body svg.fig{width:100%;max-width:none;height:auto;display:block;cursor:default;background:var(--surface);border:1px solid var(--line);border-radius:12px;color:var(--ink)}
+.figzoom-body figcaption{margin-top:8px;text-align:center;color:var(--ink-2);font-size:14px}
+@media (max-width:640px){.fg-fig:has(svg.fig) figcaption::after{content:" · Tap the diagram to enlarge it.";font-style:italic}}
 
 /* ---- portal additions ---- */
 :where(svg:not(.fig):not([width])){width:20px;height:20px;flex:none;vertical-align:-4px}
@@ -377,7 +416,7 @@ body:not(.learner) .nav button{padding:8px 8px;font-size:.86rem}
 .creds{border-color:var(--good);background:linear-gradient(0deg,var(--good-soft),var(--good-soft)) padding-box}
 .creds .copybox code{white-space:pre-line}
 .asg{display:inline-flex;align-items:center;gap:6px}
-.asg.maths{background:var(--maths-soft)}.asg.phys{background:var(--phys-soft)}.asg.chem{background:var(--chem-soft)}
+.asg.maths{background:var(--maths-soft)}.asg.phys{background:var(--phys-soft)}.asg.chem{background:var(--chem-soft)}.asg.life{background:var(--life-soft)}
 .asg .x{border:0;background:none;color:var(--ink-2);padding:0 2px;font-size:.8rem;line-height:1;cursor:pointer}
 .asg .x:hover{color:var(--bad)}
 .linkbtn{border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;font:inherit;cursor:pointer}
@@ -408,3 +447,6 @@ details.card>summary::-webkit-details-marker{display:none}
 .wb:fullscreen{border-radius:0;padding:8px;height:100vh;width:100vw;box-sizing:border-box;background:var(--surface)}
 .wb:fullscreen .wb-stage{flex:1;aspect-ratio:auto;max-height:none;height:auto}
 @media (max-width:760px){.wb{padding:6px}.wb-bar{gap:4px 8px}.wb-btn{min-width:34px;height:34px}.wb-stage{max-height:none;min-height:0}}
+.mini-select{width:auto;height:28px;padding:0 6px;font-size:.8rem;border-radius:999px}
+
+.btn.wrap{white-space:normal;text-align:left;max-width:100%}

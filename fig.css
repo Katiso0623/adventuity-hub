@@ -40,3 +40,12 @@ svg.fig.bio .lbl-i{font-size:13px;fill:var(--ink);font-style:italic;font-family:
 svg.fig.bio .arrow{stroke:var(--fig2);stroke-width:2;fill:none}
 svg.fig.bio text.c0{fill:var(--fig1)} svg.fig.bio text.c1{fill:var(--fig2)} svg.fig.bio text.c2{fill:var(--fig3)} svg.fig.bio text.c3{fill:var(--fig4)}
 .fig-table th,.fig-table caption{text-transform:none;letter-spacing:normal}
+/* tap-to-enlarge for diagrams */
+.fg-fig svg.fig{cursor:zoom-in}
+.figzoom{position:fixed;inset:0;z-index:80;background:var(--bg);display:flex;flex-direction:column}
+.figzoom-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.figzoom-scroll{flex:1 1 auto;overflow:auto;padding:14px 12px 28px;overscroll-behavior:contain}
+.figzoom-body{width:max(100%,720px);max-width:1200px;margin:0 auto}
+.figzoom-body svg.fig{width:100%;max-width:none;height:auto;display:block;cursor:default;background:var(--surface);border:1px solid var(--line);border-radius:12px;color:var(--ink)}
+.figzoom-body figcaption{margin-top:8px;text-align:center;color:var(--ink-2);font-size:14px}
+@media (max-width:640px){.fg-fig:has(svg.fig) figcaption::after{content:" · Tap the diagram to enlarge it.";font-style:italic}}

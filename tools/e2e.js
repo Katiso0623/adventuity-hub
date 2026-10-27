@@ -201,6 +201,12 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await L2.page.goto(BASE + '#t-sequences'); await L2.page.waitForSelector('#topic-root .steps', { timeout: 20000 }); await mjDone(L2.page); await shot(L2.page, '17-mobile-topic', false);
   const ex = await L2.page.$('#topic-root .example'); await ex.screenshot({ path: path.join(OUT, '18-mobile-example.png') });
   const hs = await L2.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth); ok(hs <= 1, 'no horizontal scroll on phone (' + hs + ')');
+  await L2.page.goto(BASE + '#t-ls11-excretion'); await L2.page.waitForSelector('#topic-root .fg-fig svg.fig', { timeout: 20000, state: 'attached' });
+  await L2.page.click('#topic-root details.section >> nth=0').catch(() => {});
+  const lsSvg = L2.page.locator('#topic-root .fg-fig svg.fig:visible').first(); await lsSvg.scrollIntoViewIfNeeded(); await lsSvg.click();
+  await L2.page.waitForSelector('.figzoom svg.fig'); await shot(L2.page, '39-mobile-figure-zoom');
+  const zw = await L2.page.$eval('.figzoom svg.fig', (s) => s.getBoundingClientRect().width); ok(zw >= 700, 'tapping a diagram on a phone opens it large (' + Math.round(zw) + ' px wide)');
+  await L2.page.click('.figzoom-x'); ok(await L2.page.$('.figzoom') === null, 'enlarged diagram closes');
 
   /* 9. tutors: the admin creates a tutor login, assigns a learner and schedules lessons; the tutor sets a password, joins, uses the board and logs the lesson */
   step = 'tutor-create';
@@ -299,7 +305,7 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   ok(await A.page.isVisible('h3:has-text("Priscilla Ngoie")') && /^Adv-/.test(lpw || ''), 'admin adds a sponsored learner with a temporary password');
   await shot(A.page, '34-admin-add-learner', true);
   const PL = await mk('priscilla'); await PL.page.goto(BASE); await PL.page.fill('#a-email', 'priscilla@example.com'); await PL.page.fill('#a-pass', lpw); await PL.page.click('#f-signin button[type=submit]');
-  await PL.page.waitForSelector('#f-newpass'); await PL.page.fill('#np-1', 'priscilla-pass1'); await PL.page.fill('#np-2', 'priscilla-pass1'); await PL.page.click('#f-newpass button[type=submit]'); await PL.page.waitForSelector('text=Hi Priscilla');
+  await PL.page.waitForSelector('#f-newpass'); await PL.page.fill('#np-1', 'priscilla-pass1'); await PL.page.fill('#np-2', 'priscilla-pass1'); await PL.page.click('#f-newpass button[type=submit]'); await PL.page.waitForSelector('text=Hi Priscilla').catch(async (e) => { await shot(PL.page, 'fail-priscilla', true); throw e; });
   ok(true, 'new learner chooses her own password and lands on her home page');
 
   step = 'tutor-mobile';

@@ -3,7 +3,7 @@ window.ADV_CONFIG = {
  "supabaseUrl": "https://sxbpjowkcpysoxurfqzo.supabase.co",
  "supabaseKey": "sb_publishable_K6kU-7Ghj5kPH-6cKP3BJg_8Htk1mmp",
  "vapidPublic": "BK4rXaBf6DARfH3mbz06jPgyhOwgLveC_bYUAH6LjYMxme8Q5EK1dUFxUjokjtsOw2VZH8Ye5s0FCaqrscoqAZc",
- "contentVersion": "20261026135228",
+ "contentVersion": "20261027044011",
  "siteUrl": "https://katiso0623.github.io/adventuity-hub/",
  "exams": [
   {
@@ -41,6 +41,24 @@ window.ADV_CONFIG = {
    "hours": 3,
    "marks": 150,
    "subj": "chem"
+  },
+  {
+   "id": "lp1",
+   "subject": "Life Sciences",
+   "paper": "Paper 1",
+   "when": "2026-11-13T09:00:00+02:00",
+   "hours": 2.5,
+   "marks": 150,
+   "subj": "life"
+  },
+  {
+   "id": "lp2",
+   "subject": "Life Sciences",
+   "paper": "Paper 2",
+   "when": "2026-11-16T09:00:00+02:00",
+   "hours": 2.5,
+   "marks": 150,
+   "subj": "life"
   }
  ]
 };

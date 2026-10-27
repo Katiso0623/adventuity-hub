@@ -9,7 +9,8 @@
   const T = ADV.T = (s) => window.ADV_STEPS.T(s);
   const enc = encodeURIComponent;
   const TZ = 'Africa/Johannesburg';
-  const SUBJ = ADV.SUBJ = { maths: { name: 'Mathematics', short: 'Maths' }, phys: { name: 'Physical Sciences – Physics', short: 'Physics' }, chem: { name: 'Physical Sciences – Chemistry', short: 'Chemistry' } };
+  const SUBJ = ADV.SUBJ = { maths: { name: 'Mathematics', short: 'Maths' }, phys: { name: 'Physical Sciences – Physics', short: 'Physics' }, chem: { name: 'Physical Sciences – Chemistry', short: 'Chemistry' }, life: { name: 'Life Sciences', short: 'Life Sci' } };
+  const GRADES = ADV.GRADES = [10, 11, 12];
   const ICON = ADV.ICON = {
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
     cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
@@ -35,7 +36,8 @@
     lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>',
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg>',
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>',
-    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M8 11h8M8 15h5"/></svg>'
+    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M8 11h8M8 15h5"/></svg>',
+    life: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19C5 10 10 5 20 4c-1 10-6 15-15 15z"/><path d="M5 19l8-8"/></svg>'
   };
 
   /* ---------------------------------------------------------------- dates & money */
@@ -85,11 +87,15 @@
   const state = ADV.state = { tab: null, topic: null, profile: null, isAdmin: false, isTutor: false, approved: false, settings: {}, priv: {}, bookings: [], classes: [], loading: true, contentReady: false, contentError: '' };
   const sb = ADV.sb = window.SBMini(CFG.supabaseUrl, CFG.supabaseKey);
   ADV.setting = (k, d) => (state.settings[k] !== undefined ? state.settings[k] : d);
+  /* the grade whose material is shown: a learner's own grade (from the profile) unless they switch; staff choose freely */
+  ADV.myGrade = () => { const g = Number(state.profile && state.profile.grade); return GRADES.includes(g) ? g : 12; };
+  ADV.viewGrade = () => (GRADES.includes(Number(state.gr)) ? Number(state.gr) : ADV.myGrade());
+  const gradeSelect = ADV.gradeSelect = (id, val, req) => '<select id="' + id + '"' + (req ? ' required' : '') + '>' + (req ? '<option value="">Choose…</option>' : '<option value="">–</option>') + GRADES.map((g) => '<option value="' + g + '"' + (Number(val) === g ? ' selected' : '') + '>Grade ' + g + '</option>').join('') + '</select>';
 
   /* ---------------------------------------------------------------- tabs */
-  const LEARNER_TABS = [['home', 'Home', 'home'], ['book', 'Book', 'plus'], ['lessons', 'My lessons', 'cal'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['progress', 'Progress', 'chart'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
-  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['board', 'Board', 'pen'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
-  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Sciences', 'sci'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
+  const LEARNER_TABS = [['home', 'Home', 'home'], ['book', 'Book', 'plus'], ['lessons', 'My lessons', 'cal'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['progress', 'Progress', 'chart'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
+  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['board', 'Board', 'pen'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
+  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
   const tabs = () => (state.isAdmin ? ADMIN_TABS : state.isTutor ? TUTOR_TABS : LEARNER_TABS);
   const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : state.isTutor ? ['tdash', 'tlessons', 'board', 'maths'] : ['home', 'book', 'lessons', 'maths']);
   ADV.go = function (tab, topic, opts) {
@@ -171,8 +177,8 @@
     const f = (id, label, type, ph, ac, extra) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'text') + '" placeholder="' + esc(ph || '') + '" autocomplete="' + (ac || 'off') + '"' + (extra || '') + '></div>';
     const body = mode === 'signin'
       ? '<form id="f-signin" class="stack" style="gap:12px">' + f('a-email', 'E-mail', 'email', 'you@example.com', 'email', ' required') + f('a-pass', 'Password', 'password', '', 'current-password', ' required') + '<button class="btn primary" type="submit">Sign in</button><p class="small muted">Forgot your password? ' + (state.settings.site && state.settings.site.whatsapp ? '<a href="' + esc(ADV.wa(state.settings.site.whatsapp, 'Hi, I forgot my password for the Adventuity portal. My e-mail is: ')) + '" target="_blank" rel="noopener">Ask the tutor on WhatsApp</a> to reset it.' : 'Ask your tutor to reset it.') + '</p></form>'
-      : '<form id="f-signup" class="stack" style="gap:12px"><div class="grid cols-2">' + f('s-name', 'Name and surname', 'text', 'Thabo Mokoena', 'name', ' required') + f('s-phone', 'WhatsApp number', 'tel', '082 123 4567', 'tel', ' required') + f('s-email', 'E-mail', 'email', 'you@example.com', 'email', ' required') + f('s-pass', 'Password (8+ characters)', 'password', '', 'new-password', ' required minlength="8"') + f('s-school', 'School (optional)', 'text', '', 'organization') + f('s-guardian', 'Parent/guardian number (optional)', 'tel', '', 'off') + '</div><input id="s-web" type="text" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true"><label class="check"><input id="s-terms" type="checkbox" required> I agree that the tutor may contact me about lessons, and I will keep the study material for my own use.</label><button class="btn primary" type="submit">Create account</button></form>';
-    return '<div class="auth"><div class="auth-card card"><div class="auth-head"><span class="mark big" aria-hidden="true"></span><div><h1>' + esc(brand) + '</h1><p class="muted">Grade 12 Mathematics & Physical Sciences – book lessons and study online.</p></div></div>' + tabsHtml + '<div id="auth-msg" class="small" role="alert"></div>' + body + '<p class="small muted" style="margin-top:12px"><a href="index.html">← Back to the website</a></p></div></div>';
+      : '<form id="f-signup" class="stack" style="gap:12px"><div class="grid cols-2">' + f('s-name', 'Name and surname', 'text', 'Thabo Mokoena', 'name', ' required') + f('s-phone', 'WhatsApp number', 'tel', '082 123 4567', 'tel', ' required') + f('s-email', 'E-mail', 'email', 'you@example.com', 'email', ' required') + f('s-pass', 'Password (8+ characters)', 'password', '', 'new-password', ' required minlength="8"') + f('s-school', 'School (optional)', 'text', '', 'organization') + '<div class="field"><label for="s-grade">Grade</label>' + gradeSelect('s-grade', '', true) + '</div>' + f('s-guardian', 'Parent/guardian number (optional)', 'tel', '', 'off') + '</div><input id="s-web" type="text" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true"><label class="check"><input id="s-terms" type="checkbox" required> I agree that the tutor may contact me about lessons, and I will keep the study material for my own use.</label><button class="btn primary" type="submit">Create account</button></form>';
+    return '<div class="auth"><div class="auth-card card"><div class="auth-head"><span class="mark big" aria-hidden="true"></span><div><h1>' + esc(brand) + '</h1><p class="muted">Grades 10–12 Mathematics, Physical Sciences and Life Sciences – book lessons and study online.</p></div></div>' + tabsHtml + '<div id="auth-msg" class="small" role="alert"></div>' + body + '<p class="small muted" style="margin-top:12px"><a href="index.html">← Back to the website</a></p></div></div>';
   }
   async function doSignIn(email, pass) {
     const msg = $('#auth-msg'); if (msg) msg.textContent = 'Signing in…';
@@ -183,7 +189,7 @@
     if (e.target.id === 'f-signin') { e.preventDefault(); await doSignIn($('#a-email').value.trim(), $('#a-pass').value); }
     if (e.target.id === 'f-signup') {
       e.preventDefault(); const msg = $('#auth-msg'); msg.textContent = 'Creating your account…';
-      const body = { email: $('#s-email').value.trim(), password: $('#s-pass').value, full_name: $('#s-name').value.trim(), phone: $('#s-phone').value.trim(), school: $('#s-school').value.trim(), guardian_phone: $('#s-guardian').value.trim(), website: $('#s-web').value };
+      const body = { email: $('#s-email').value.trim(), password: $('#s-pass').value, full_name: $('#s-name').value.trim(), phone: $('#s-phone').value.trim(), school: $('#s-school').value.trim(), grade: Number($('#s-grade').value) || null, guardian_phone: $('#s-guardian').value.trim(), website: $('#s-web').value };
       try { await sb.fn('signup', body); await doSignIn(body.email, body.password); }
       catch (err) { msg.textContent = ADV.errMsg(err); }
     }
@@ -271,9 +277,10 @@
     const up = state.bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) > now()).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
     const pend = state.bookings.filter((b) => b.status === 'pending' && new Date(b.starts_at) > now());
     const next = up[0];
-    const exams = (CFG.exams || []).map((e) => { const c = ADV.countdown(e.when); return '<div class="cd' + (c ? '' : ' past') + '"><span class="eyebrow">' + esc(e.subject) + '</span><strong>' + esc(e.paper) + '</strong>' + (c ? '<div class="big">' + c.d + '<small>days</small></div>' : '<div class="big" style="font-size:1rem">Written</div>') + '<span class="small muted">' + esc(fmt.date(e.when)) + ' · 09:00</span></div>'; }).join('');
+    const g12 = ADV.myGrade() === 12;
+    const exams = (g12 ? (CFG.exams || []) : []).map((e) => { const c = ADV.countdown(e.when); return '<div class="cd' + (c ? '' : ' past') + '"><span class="eyebrow">' + esc(e.subject) + '</span><strong>' + esc(e.paper) + '</strong>' + (c ? '<div class="big">' + c.d + '<small>days</small></div>' : '<div class="big" style="font-size:1rem">Written</div>') + '<span class="small muted">' + esc(fmt.date(e.when)) + ' · 09:00</span></div>'; }).join('');
     const notice = state.settings.site && state.settings.site.notice;
-    return '<div class="stack"><section class="hero"><span class="eyebrow">Welcome back</span><h1 style="margin-top:4px">Hi ' + esc(first) + '</h1><p class="muted" style="margin-top:6px">Book lessons, join your class and study for the finals – all in one place.</p>' +
+    return '<div class="stack"><section class="hero"><span class="eyebrow">Welcome back</span><h1 style="margin-top:4px">Hi ' + esc(first) + '</h1><p class="muted" style="margin-top:6px">' + (g12 ? 'Book lessons, join your class and study for the finals – all in one place.' : 'Grade ' + ADV.myGrade() + ' – book lessons, join your class and work through your notes, worked examples and exam questions.') + '</p>' +
       '<div class="row" style="margin-top:14px"><button class="btn primary" data-go="tab" data-id="book">' + ICON.plus + 'Book a lesson</button><button class="btn" data-go="tab" data-id="lessons">' + ICON.cal + 'My lessons</button>' + (ADV.installButton ? ADV.installButton() : '') + '</div><div class="countdown">' + exams + '</div></section>' +
       (notice ? '<div class="callout"><span class="eyebrow">From your tutor</span><p style="margin-top:4px;white-space:pre-line">' + esc(notice) + '</p></div>' : '') +
       '<div class="grid cols-2">' + (next ? lessonCard(next, true) : '<div class="card"><span class="eyebrow">Next lesson</span><h3 style="margin-top:6px">No confirmed lesson yet</h3><p class="small muted" style="margin-top:4px">' + (pend.length ? pend.length + ' request' + (pend.length > 1 ? 's are' : ' is') + ' waiting for the tutor to accept.' : 'Request a one-on-one or a seat in a group class.') + '</p><div class="row" style="margin-top:10px"><button class="btn primary" data-go="tab" data-id="book">Book a lesson</button></div></div>') +
@@ -295,7 +302,7 @@
   /* ---------------------------------------------------------------- LEARNER: book */
   ADV.views.book = function () {
     const bs = state.book || (state.book = { kind: 'one', subj: 'maths', mins: 60, day: null, hh: null, topics: [], note: '' });
-    const fees = ADV.setting('fees', { maths: 250, phys: 250, chem: 250 });
+    const fees = ADV.setting('fees', { maths: 250, phys: 250, chem: 250, life: 250 });
     const bk = ADV.setting('booking', {}); const durs = bk.durations || [60, 90, 120];
     const seg = (key, val, label) => '<button class="' + (bs[key] === val ? 'on' : '') + '" data-action="book-set" data-k="' + key + '" data-v="' + esc(val) + '">' + esc(label) + '</button>';
     let html = '<div class="stack"><div><span class="eyebrow">Book</span><h1>Book a lesson</h1><p class="muted small">Choose a time that suits you. The tutor accepts or suggests another time – you get a notification and see it under My lessons.</p></div>' +
@@ -311,9 +318,9 @@
     for (let i = 0; i < ahead; i++) { const key = fmt.key(Date.now() + i * 864e5); const slots = ADV.slotsFor(key, bs.mins, state.busy || []); if (slots.length) days.push({ key, slots }); }
     if (!bs.day || !days.find((d) => d.key === bs.day)) { bs.day = days[0] ? days[0].key : null; bs.hh = null; }
     const day = days.find((d) => d.key === bs.day);
-    const rate = Number(fees[bs.subj] != null ? fees[bs.subj] : fees.default || 0); const cost = rate * bs.mins / 60;
+    const rate = Number(fees[bs.subj] != null ? fees[bs.subj] : fees.default != null ? fees.default : fees.maths || 0); const cost = rate * bs.mins / 60;
     const topicOpts = (ADV.outlineTopics ? ADV.outlineTopics(bs.subj) : []).map((t) => '<button type="button" class="chipbtn ' + (bs.topics.includes(t.id) ? bs.subj : '') + '" data-action="book-topic" data-id="' + esc(t.id) + '">' + esc(t.title) + '</button>').join('');
-    html += '<div class="card stack" style="gap:16px"><div><label>Subject</label><div class="seg">' + seg('subj', 'maths', 'Mathematics') + seg('subj', 'phys', 'Physics') + seg('subj', 'chem', 'Chemistry') + '</div></div>' +
+    html += '<div class="card stack" style="gap:16px"><div><label>Subject</label><div class="seg">' + seg('subj', 'maths', 'Mathematics') + seg('subj', 'phys', 'Physics') + seg('subj', 'chem', 'Chemistry') + seg('subj', 'life', 'Life Sciences') + '</div></div>' +
       '<div><label>Length</label><div class="seg">' + durs.map((d) => seg('mins', d, fmt.mins(d))).join('') + '</div></div>' +
       '<div><label>Day</label><div class="row chips">' + (days.length ? days.map((d) => '<button class="chipbtn ' + (d.key === bs.day ? 'maths' : '') + '" data-action="book-day" data-id="' + d.key + '">' + esc(fmt.wd(d.key + 'T12:00:00+02:00') + ' ' + fmt.day(d.key + 'T12:00:00+02:00') + ' ' + fmt.mon(d.key + 'T12:00:00+02:00')) + '</button>').join('') : '<span class="small muted">No open times in the next ' + ahead + ' days. Message the tutor.</span>') + '</div></div>' +
       (day ? '<div><label>Start time</label><div class="row chips">' + day.slots.map((s) => '<button class="chipbtn ' + (bs.hh === s.hh ? 'maths' : '') + '" data-action="book-time" data-id="' + s.hh + '">' + s.hh + '</button>').join('') + '</div></div>' : '') +
@@ -371,7 +378,7 @@
     const p = state.profile;
     const f = (id, label, val, type) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>';
     const fields = state.isTutor ? f('p-name', 'Name and surname', p.full_name) + f('p-phone', 'WhatsApp number', p.phone, 'tel') + '<div class="field" style="grid-column:1/-1"><label for="p-meet">My Google Meet link (used for my lessons)</label><input id="p-meet" type="url" placeholder="https://meet.google.com/abc-defg-hij" value="' + esc(p.meet_link || '') + '"><span class="small muted">Open meet.google.com → New meeting → Create a meeting for later, and paste the link here. Change one lesson\'s link under My lessons.</span></div>'
-      : f('p-name', 'Name and surname', p.full_name) + f('p-phone', 'WhatsApp number', p.phone, 'tel') + f('p-school', 'School', p.school) + f('p-guardian', 'Parent/guardian number', p.guardian_phone, 'tel');
+      : f('p-name', 'Name and surname', p.full_name) + f('p-phone', 'WhatsApp number', p.phone, 'tel') + f('p-school', 'School', p.school) + (state.isAdmin ? '' : '<div class="field"><label for="p-grade">Grade</label>' + gradeSelect('p-grade', p.grade) + '</div>') + f('p-guardian', 'Parent/guardian number', p.guardian_phone, 'tel');
     return '<div class="stack"><div><span class="eyebrow">Account</span><h1>' + esc(p.full_name || 'Your account') + '</h1><p class="small muted">' + esc(p.email || '') + (state.isAdmin ? ' · administrator' : state.isTutor ? ' · tutor' : state.approved ? ' · study notes unlocked' : ' · waiting for approval') + '</p></div>' +
       '<form id="f-profile" class="card stack"><h3>Your details</h3><div class="grid cols-2">' + fields + '</div><div class="row"><button class="btn primary" type="submit">Save details</button></div></form>' +
       '<form id="f-pass" class="card stack"><h3>Change password</h3><div class="grid cols-2">' + f('p-pass1', 'New password (8+ characters)', '', 'password') + f('p-pass2', 'Repeat the new password', '', 'password') + '</div><div class="row"><button class="btn" type="submit">Change password</button></div></form>' +
@@ -383,6 +390,7 @@
     if (e.target.id === 'f-profile') {
       e.preventDefault(); const patch = {}; const v = (sel) => { const el = $(sel); return el ? el.value.trim() : undefined; };
       [['full_name', '#p-name'], ['phone', '#p-phone'], ['school', '#p-school'], ['guardian_phone', '#p-guardian']].forEach(([k, sel]) => { const x = v(sel); if (x !== undefined) patch[k] = x; });
+      const gsel = v('#p-grade'); if (gsel !== undefined) { patch.grade = Number(gsel) || null; state.gr = null; }
       const link = v('#p-meet'); if (link && !/^https:\/\/\S{6,}$/.test(link)) return toast('Paste the full meeting link, starting with https://', 4000);
       try {
         const r = await sb.update('profiles', { id: 'eq.' + state.profile.id }, patch); state.profile = r[0] || state.profile;
