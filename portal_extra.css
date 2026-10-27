@@ -166,3 +166,10 @@ details.card>summary::-webkit-details-marker{display:none}
 .mini-select{width:auto;height:28px;padding:0 6px;font-size:.8rem;border-radius:999px}
 
 .btn.wrap{white-space:normal;text-align:left;max-width:100%}
+
+/* South African date/time pickers and the lesson timer */
+.tsel{display:flex;align-items:center;gap:4px;flex-wrap:wrap}.tsel select{width:auto;min-width:64px}.tsel b{font-weight:600}
+.lesson-timer{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 12px;font-size:.86rem;font-weight:600;background:var(--surface-2);color:var(--ink-2)}
+.lesson-timer svg{width:16px;height:16px}
+.lesson-timer.live{background:var(--good-soft);color:var(--good)}.lesson-timer.warn{background:var(--warn-soft);color:var(--warn)}.lesson-timer.over{background:var(--bad-soft);color:var(--bad)}
+.wb-timer .lesson-timer{font-size:.8rem;padding:4px 10px}

@@ -212,7 +212,8 @@
 
   /* ---------------------------------------------------------------- toolbar and view */
   function barHtml() {
-    return '<div class="wb-group" role="group" aria-label="Tools">' + TOOLS.map(([k, label, ic]) => '<button type="button" class="wb-btn' + (B.tool === k ? ' on' : '') + '" data-wb="tool" data-v="' + k + '" title="' + esc(label) + '" aria-label="' + esc(label) + '" aria-pressed="' + (B.tool === k) + '">' + ic + '</button>').join('') + '</div>' +
+    const cur = ADV.currentLesson && ADV.currentLesson();
+    return (cur ? '<div class="wb-group wb-timer">' + ADV.lessonTimer(cur) + '</div>' : '') + '<div class="wb-group" role="group" aria-label="Tools">' + TOOLS.map(([k, label, ic]) => '<button type="button" class="wb-btn' + (B.tool === k ? ' on' : '') + '" data-wb="tool" data-v="' + k + '" title="' + esc(label) + '" aria-label="' + esc(label) + '" aria-pressed="' + (B.tool === k) + '">' + ic + '</button>').join('') + '</div>' +
       '<div class="wb-group" role="group" aria-label="Colour">' + COLS.map((c) => '<button type="button" class="wb-col' + (B.colour === c ? ' on' : '') + '" data-wb="col" data-v="' + c + '" style="--c:' + c + '" aria-label="Colour ' + c + '"></button>').join('') + '</div>' +
       '<div class="wb-group" role="group" aria-label="Size">' + ['s', 'm', 'l'].map((z) => '<button type="button" class="wb-btn' + (B.size === z ? ' on' : '') + '" data-wb="size" data-v="' + z + '" aria-label="' + { s: 'Thin', m: 'Medium', l: 'Thick' }[z] + '"><i class="wb-dot" style="width:' + (SIZE[z] + 4) + 'px;height:' + (SIZE[z] + 4) + 'px"></i></button>').join('') + '</div>' +
       '<div class="wb-group"><label class="sr" for="wb-bg">Background</label><select id="wb-bg" data-wb="bg">' + BGS.map(([k, l]) => '<option value="' + k + '"' + (page().bg === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></div>' +

@@ -231,7 +231,7 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await A.page.selectOption('#sc-learner', thaboId); await A.page.waitForTimeout(300);
   ok((await A.page.$eval('#sc-tutor', (e) => e.options[e.selectedIndex].text)) === 'Patience Mazibuko', 'assigned tutor preselected for the learner');
   await A.page.click('[data-action="sc-quick"][data-m="0"]');   // "Now": a lesson agreed on WhatsApp that starts straight away
-  const picked = await A.page.evaluate(() => ({ d: document.querySelector('#sc-date').value, t: document.querySelector('#sc-time').value, today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date()) }));
+  const picked = await A.page.evaluate(() => ({ d: document.querySelector('#sc-date').value, t: document.querySelector('#sc-time-h').value + ':' + document.querySelector('#sc-time-m').value, today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date()) }));
   ok(picked.d === picked.today && /^\d\d:\d\d$/.test(picked.t), 'Now fills in today and the current time: ' + picked.d + ' ' + picked.t);
   await A.page.selectOption('#sc-rep', '2'); await A.page.fill('#sc-msg', 'Exam prep for Paper 1');
   await A.page.click('#f-sched button[type=submit]');
@@ -239,6 +239,8 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   ok(await A.page.isVisible('text=WhatsApp Patience (tutor)'), 'WhatsApp buttons for the tutor and the learner');
   const twa = decodeURIComponent(await A.page.getAttribute('a:has-text("WhatsApp Patience (tutor)")', 'href')); ok(/Thabo Mokoena – Maths/.test(twa) && /Join the lesson/.test(twa), 'tutor message lists the lessons');
   await shot(A.page, '22-admin-scheduled', true);
+  const dateLabel = await A.page.$eval('#sc-date', (e) => e.options[e.selectedIndex].text); ok(/^((Today|Tomorrow) · )?[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}( 20\d\d)?$/.test(dateLabel), 'date shown the South African way: ' + dateLabel);
+  ok(await A.page.$$eval('#sc-time-h option', (o) => o.length) === 24, '24-hour clock for the start time');
 
   step = 'tutor-login';
   const P = await mk('tutor');
@@ -250,6 +252,7 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await P.page.fill('#tm-link', 'https://meet.google.com/abc-defg-hij'); await P.page.click('#f-tmeet button[type=submit]');
   await P.page.waitForSelector('text=Meet link saved');
   const join = await P.page.getAttribute('a:has-text("Join the lesson")', 'href'); ok(join === 'https://meet.google.com/abc-defg-hij', 'tutor joins with their own Meet link');
+  const tTimer = await P.page.textContent('.lesson-timer'); ok(/left · ends \d\d:\d\d/.test(tTimer), 'tutor sees the time left in the lesson: ' + tTimer.trim());
   await shot(P.page, '24-tutor-today', true);
   const tLeak = await P.page.evaluate(async () => ({ b: (await ADV.sb.select('bookings', {})).length, p: (await ADV.sb.select('profiles', {})).length, pay: (await ADV.sb.select('private_settings', { key: 'eq.payment' })).length, apps: await ADV.sb.select('tutor_applications', {}).then((r) => r.length, () => -1) }));
   ok(tLeak.b === 0 && tLeak.p === 1 && tLeak.pay === 0 && tLeak.apps <= 0, 'tutor cannot read bookings, other profiles, payment details or applications directly ' + JSON.stringify(tLeak));

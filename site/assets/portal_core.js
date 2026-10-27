@@ -136,6 +136,19 @@
   }
 
   /* ---------------------------------------------------------------- render */
+  /* A redraw (for example when data finishes loading) keeps what the person has typed but not yet submitted. */
+  const typed = new Map(); let paintedKey = '';
+  document.addEventListener('input', (e) => { const el = e.target; if (el && el.id && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !/^(file|checkbox|radio)$/.test(el.type) && el.closest('#view')) typed.set(el.id, el.value); }, true);
+  document.addEventListener('change', (e) => { const el = e.target; if (el && el.id && el.tagName === 'SELECT' && el.closest('#view')) typed.set(el.id, el.value); }, true);
+  document.addEventListener('submit', () => typed.clear(), true);
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-action],[data-go]')) typed.clear(); }, true);   // buttons that save or move on use the values themselves
+  function paint(view, html, key) {
+    const same = key === paintedKey; const focus = document.activeElement && view.contains(document.activeElement) ? document.activeElement.id : '';
+    view.innerHTML = html; paintedKey = key;
+    if (!same) { typed.clear(); return; }
+    typed.forEach((v, id) => { const el = document.getElementById(id); if (el && view.contains(el) && el.value !== v) { if (el.tagName === 'SELECT' && ![...el.options].some((o) => o.value === v)) return; el.value = v; } });
+    if (focus) { const f = document.getElementById(focus); if (f) try { f.focus({ preventScroll: true }); } catch (e) { /* not focusable */ } }
+  }
   function render() {
     const app = $('#app');
     const sk = String(!!state.profile) + state.isAdmin + state.isTutor;
@@ -143,14 +156,14 @@
     markNav(); ADV.badges();
     const view = $('#view');
     if (state.loading) { view.innerHTML = '<div class="card"><p class="muted">Loading…</p></div>'; return; }
-    if (!state.profile) { view.innerHTML = viewAuth(); return; }
-    if (state.profile.must_change_password) { view.innerHTML = viewNewPassword(); return; }
+    if (!state.profile) { paint(view, viewAuth(), 'auth'); return; }
+    if (state.profile.must_change_password) { paint(view, viewNewPassword(), 'newpass'); return; }
     let html;
     try {
       if (state.topic && ADV.views.topic) html = ADV.views.topic(state.topic);
       else html = (ADV.views[state.tab] || ADV.views[tabs()[0][0]])();
     } catch (e) { console.error(e); html = '<div class="card"><p>Something went wrong showing this page. ' + esc(e.message) + '</p></div>'; }
-    view.innerHTML = html;
+    paint(view, html, state.tab + '|' + (state.topic || ''));
     document.body.classList.toggle('learner', !state.isAdmin);
     ADV.after.forEach((f) => { try { f(view); } catch (e) { console.error(e); } });
     if (ADV.renderOverlay) ADV.renderOverlay();
@@ -248,7 +261,51 @@
     const to = state.priv.notify && state.priv.notify.email; if (!to) return;
     try { await fetch('https://formsubmit.co/ajax/' + enc(to), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(Object.assign({ _subject: subject, _template: 'table', _captcha: 'false' }, lines)) }); } catch (e) { /* e-mail is best effort */ }
   };
-  ADV.joinWindow = (b) => { const s = new Date(b.starts_at), e = new Date(b.ends_at); const t = now(); return { open: t >= new Date(s - 15 * 6e4) && t <= new Date(+e + 30 * 6e4), soon: t < new Date(s - 15 * 6e4), over: t > new Date(+e + 30 * 6e4) }; };
+  /* Lesson time limit: Join opens 15 minutes before the start and closes 5 minutes after the booked end. */
+  const GRACE = 5 * 6e4;
+  ADV.joinWindow = (b) => { const s = new Date(b.starts_at), e = new Date(b.ends_at); const t = now(); return { open: t >= new Date(s - 15 * 6e4) && t <= new Date(+e + GRACE), soon: t < new Date(s - 15 * 6e4), over: t > new Date(+e + GRACE) }; };
+  ADV.timerText = (st, en) => {
+    const t = +now(), s = +new Date(st), e = +new Date(en);
+    if (t < s) return ['soon', 'Starts in ' + fmt.mins(Math.ceil((s - t) / 6e4)) + ' · ' + fmt.mins((e - s) / 6e4) + ' lesson'];
+    if (t <= e) { const m = Math.ceil((e - t) / 6e4); return [m <= 5 ? 'warn' : 'live', (m <= 5 ? 'Time almost up – ' : '') + fmt.mins(m) + ' left · ends ' + fmt.time(e)]; }
+    return ['over', 'Time is up – the lesson ended at ' + fmt.time(e)];
+  };
+  ADV.lessonTimer = (b) => { const [k, txt] = ADV.timerText(b.starts_at, b.ends_at); return '<span class="lesson-timer ' + k + '" role="timer" data-s="' + esc(b.starts_at) + '" data-e="' + esc(b.ends_at) + '">' + ICON.clock + '<span>' + esc(txt) + '</span></span>'; };
+  /* the lesson this person is teaching or attending right now (15 min before the start until 5 min after the end) */
+  ADV.currentLesson = () => {
+    const me = state.profile && state.profile.id; const t = +now();
+    return (state.bookings || []).filter((b) => b.status === 'accepted' && t >= +new Date(b.starts_at) - 15 * 6e4 && t <= +new Date(b.ends_at) + GRACE &&
+      (state.isTutor ? true : state.isAdmin ? (!b.tutor_id || b.tutor_id === me) : b.learner_id === me)).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))[0] || null;
+  };
+  const warned = new Set();
+  setInterval(() => {
+    document.querySelectorAll('.lesson-timer').forEach((el) => {
+      const [k, txt] = ADV.timerText(el.dataset.s, el.dataset.e); el.className = 'lesson-timer ' + k; el.lastChild.textContent = txt;
+      if (+now() > +new Date(el.dataset.e) + GRACE) { const c = el.closest('.card'); if (c) c.querySelectorAll('.join-link').forEach((a) => a.remove()); }
+      if ((state.isTutor || state.isAdmin) && (k === 'warn' || k === 'over') && !warned.has(k + el.dataset.e)) { warned.add(k + el.dataset.e); toast(k === 'warn' ? '5 minutes left in the lesson – start wrapping up.' : 'Time is up – the lesson has ended.', 6000); }
+    });
+  }, 15000);
+
+  /* South African date and time pickers. Browsers draw <input type="date|time"> in the computer's own format (often
+     mm/dd/yyyy and AM/PM); these show "Tue 27 Oct 2026" and 24-hour time on every device, in South African time. */
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const dayLabel = (k) => F(Object.assign({ weekday: 'short', day: 'numeric', month: 'short' }, k.slice(0, 4) === fmt.key(now()).slice(0, 4) ? {} : { year: 'numeric' })).format(new Date(k + 'T12:00:00+02:00')).replace(/,/g, '');
+  ADV.dateSelect = (id, value, o) => {
+    o = o || {}; const today = fmt.key(now()), tomorrow = fmt.key(+now() + 864e5); const keys = [];
+    for (let i = -(o.back || 0); i < (o.days || 180); i++) { const k = fmt.key(+now() + i * 864e5); if (!keys.includes(k)) keys.push(k); }
+    if (value && !keys.includes(value)) { keys.push(value); keys.sort(); }
+    return '<select id="' + id + '"' + (o.required ? ' required' : '') + '>' + (o.blank ? '<option value="">Choose a day…</option>' : '') +
+      keys.map((k) => '<option value="' + k + '"' + (k === value ? ' selected' : '') + '>' + (k === today ? 'Today · ' : k === tomorrow ? 'Tomorrow · ' : '') + esc(dayLabel(k)) + '</option>').join('') + '</select>';
+  };
+  ADV.timeSelect = (id, value) => {
+    const [h, m] = String(value || '18:00').split(':').map(Number); const mins = []; for (let i = 0; i < 60; i += 5) mins.push(i); if (!mins.includes(m)) { mins.push(m); mins.sort((a, b) => a - b); }
+    return '<span class="tsel"><select id="' + id + '-h" aria-label="Hour (24-hour clock)">' + Array.from({ length: 24 }, (_, i) => '<option value="' + pad2(i) + '"' + (i === h ? ' selected' : '') + '>' + pad2(i) + '</option>').join('') + '</select><b>:</b>' +
+      '<select id="' + id + '-m" aria-label="Minutes">' + mins.map((i) => '<option value="' + pad2(i) + '"' + (i === m ? ' selected' : '') + '>' + pad2(i) + '</option>').join('') + '</select><span class="small muted">SAST</span></span>';
+  };
+  ADV.readTime = (id) => { const h = document.getElementById(id + '-h'), m = document.getElementById(id + '-m'); return h && m ? h.value + ':' + m.value : ''; };
+  ADV.setTime = (id, hhmm) => { const [h, m] = hhmm.split(':'); const H = document.getElementById(id + '-h'), M = document.getElementById(id + '-m'); if (H) H.value = h; if (M) { if (![...M.options].some((o) => o.value === m)) M.add(new Option(m, m)); M.value = m; } };
+  ADV.LENGTHS = [30, 45, 60, 75, 90, 120, 150, 180, 240];
+  ADV.lengthSelect = (id, value) => { value = Number(value) || 60; const L = ADV.LENGTHS.includes(value) ? ADV.LENGTHS : ADV.LENGTHS.concat(value).sort((a, b) => a - b); return '<select id="' + id + '">' + L.map((m) => '<option value="' + m + '"' + (m === value ? ' selected' : '') + '>' + fmt.mins(m) + '</option>').join('') + '</select>'; };
   ADV.bookingRoom = (b) => b.room || '';
 
   /* ---------------------------------------------------------------- availability */
@@ -342,7 +399,7 @@
     const pay = (b.status === 'accepted' || b.status === 'completed') && due ? (b.paid ? pill('good', 'Paid') : pill('warn', 'Payment due ' + fmt.rand(b.fee))) : '';
     let actions = '';
     if (b.status === 'accepted' && !jw.over) {
-      actions += jw.open && room ? '<a class="btn primary" href="' + esc(ADV.roomUrl(room, state.profile.full_name)) + '" target="_blank" rel="noopener">' + ICON.video + 'Join the lesson</a>' : '<span class="small muted">' + ICON.clock + ' Join opens 15 minutes before the start</span>';
+      actions += jw.open && room ? '<a class="btn primary join-link" href="' + esc(ADV.roomUrl(room, state.profile.full_name)) + '" target="_blank" rel="noopener">' + ICON.video + 'Join the lesson</a>' + ADV.lessonTimer(b) : '<span class="small muted">' + ICON.clock + ' Join opens 15 minutes before the start · ' + fmt.mins((new Date(b.ends_at) - new Date(b.starts_at)) / 6e4) + ' lesson</span>';
       actions += '<a class="btn sm" href="' + esc(ADV.gcal((state.settings.site && state.settings.site.brand || 'Adventuity') + ' lesson', b.starts_at, b.ends_at, 'Join from the Adventuity portal: ' + location.origin + location.pathname, '')) + '" target="_blank" rel="noopener">Add to calendar</a>';
     }
     if (b.status === 'pending' && new Date(b.starts_at) > now()) actions += '<button class="btn sm" data-action="b-cancel" data-id="' + b.id + '">Cancel request</button>';
