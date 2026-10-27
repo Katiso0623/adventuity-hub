@@ -80,12 +80,30 @@
     /* curve labels: try several spots along each curve and both sides of it; keep the spot farthest from every curve, point and earlier label */
     const placed = [];
     const allPts = curves.flatMap((c) => c.pts.filter((p) => p[1] > y0 && p[1] < y1).map((p) => [sx(p[0]), sy(p[1])]));
-    (spec.points || []).forEach((pt) => { const X = sx(num(pt.x)), Y = sy(num(pt.y)); allPts.push([X, Y]); if (pt.label) placed.push([X + 7, Y - 20, 8 * String(pt.label).length + 2]); });
+    (spec.points || []).forEach((pt) => { allPts.push([sx(num(pt.x)), sy(num(pt.y))]); });
     (spec.vlines || []).forEach((v) => { for (let yy = m.t; yy <= H - m.b; yy += 6) allPts.push([sx(v), yy]); });
     (spec.hlines || []).forEach((v) => { for (let xx = m.l; xx <= W - m.r; xx += 6) allPts.push([xx, sy(v)]); });
     if (y0 <= 0 && y1 >= 0) for (let xx = m.l; xx <= W - m.r; xx += 6) allPts.push([xx, sy(0)]);   // x-axis and its "x" label
     if (x0 <= 0 && x1 >= 0) for (let yy = m.t; yy <= H - m.b; yy += 6) allPts.push([sx(0), yy]);   // y-axis and its "y" label
     allPts.push([W - m.r - 4, sy(Math.min(Math.max(0, y0), y1)) - 10], [sx(Math.min(Math.max(0, x0), x1)) + 10, m.t + 6]);
+    /* point labels: up and to the right as usual; when a curve, axis, tick number or another label touches that spot, use the first other side that is clear */
+    const rectGap = (ax, ay, aw, ah, bx, by, bw, bh) => Math.hypot(Math.max(bx - (ax + aw), 0, ax - (bx + bw)), Math.max(by - (ay + ah), 0, ay - (by + bh)));
+    const ticks = [];
+    for (let x = Math.ceil(x0 / xs) * xs; x <= x1 + 1e-9; x += xs) if (Math.abs(x) > 1e-9) { const w = 7 * fmtTick(x).length; ticks.push([sx(x) - w / 2, ax + 3, w, 13]); }
+    for (let y = Math.ceil(y0 / ys) * ys; y <= y1 + 1e-9; y += ys) if (Math.abs(y) > 1e-9) { const w = 7 * fmtTick(y).length; ticks.push([ay - 6 - w, sy(y) - 7, w, 13]); }
+    const ptLabels = (spec.points || []).map((pt) => {
+      if (!pt.label) return null;
+      const X = sx(num(pt.x)), Y = sy(num(pt.y)), tw = 7.6 * String(pt.label).length + 2, th = 14; let best = null;
+      [[X + 7, Y - 19], [X - 7 - tw, Y - 19], [X + 7, Y + 5], [X - 7 - tw, Y + 5], [X + 9, Y - 7], [X - 9 - tw, Y - 7], [X - tw / 2, Y - 24], [X - tw / 2, Y + 9]].forEach(([lx, ly], i) => {
+        if (i && (lx < 2 || lx + tw > W - 2 || ly < 2 || ly + th > H - 2)) return;
+        let d = Infinity;
+        allPts.forEach(([a, b]) => { if (Math.abs(a - X) < 0.5 && Math.abs(b - Y) < 0.5) return; d = Math.min(d, rectGap(lx, ly, tw, th, a, b, 0, 0)); });
+        ticks.concat(placed).forEach(([px, py, pw, ph]) => { d = Math.min(d, rectGap(lx, ly, tw, th, px, py, pw, ph || 14)); });
+        const score = Math.min(d, 3) - i * 0.01;
+        if (!best || score > best.score) best = { score, lx, ly };
+      });
+      placed.push([best.lx, best.ly, tw, th]); return best;
+    });
     curves.forEach((c) => {
       if (!c.label) return;
       const inside = c.pts.filter((p) => p[1] > y0 && p[1] < y1); if (!inside.length) return;
@@ -106,7 +124,7 @@
       placed.push([best.lx, best.ly, tw]);
       out += '<text x="' + best.cx.toFixed(1) + '" y="' + (best.cy + 5).toFixed(1) + '" text-anchor="middle" class="lbl c' + (c.k % 4) + '">' + esc(c.label) + '</text>';
     });
-    (spec.points || []).forEach((pt) => { const X = sx(num(pt.x)), Y = sy(num(pt.y)); out += '<circle cx="' + X + '" cy="' + Y + '" r="4" class="pt"/>'; if (pt.label) out += '<text x="' + (X + 7) + '" y="' + (Y - 7) + '" class="lbl">' + esc(pt.label) + '</text>'; });
+    (spec.points || []).forEach((pt, i) => { const X = sx(num(pt.x)), Y = sy(num(pt.y)); out += '<circle cx="' + X + '" cy="' + Y + '" r="4" class="pt"/>'; const L = ptLabels[i]; if (L) out += '<text x="' + +L.lx.toFixed(1) + '" y="' + +(L.ly + 12).toFixed(1) + '" class="lbl">' + esc(pt.label) + '</text>'; });
     return out + '</svg>';
   }
 
