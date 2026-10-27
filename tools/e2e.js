@@ -230,8 +230,9 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await A.page.click('[data-action="sched-go"][data-tutor]'); await A.page.waitForSelector('#f-sched');
   await A.page.selectOption('#sc-learner', thaboId); await A.page.waitForTimeout(300);
   ok((await A.page.$eval('#sc-tutor', (e) => e.options[e.selectedIndex].text)) === 'Patience Mazibuko', 'assigned tutor preselected for the learner');
-  const soon = await A.page.evaluate(() => { const z = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(Date.now() + 5 * 60000)); const g = (t) => z.find((x) => x.type === t).value; return { date: g('year') + '-' + g('month') + '-' + g('day'), time: g('hour') + ':' + g('minute') }; });
-  await A.page.fill('#sc-date', soon.date); await A.page.$eval('#sc-time', (e) => e.removeAttribute('step')); await A.page.fill('#sc-time', soon.time);
+  await A.page.click('[data-action="sc-quick"][data-m="0"]');   // "Now": a lesson agreed on WhatsApp that starts straight away
+  const picked = await A.page.evaluate(() => ({ d: document.querySelector('#sc-date').value, t: document.querySelector('#sc-time').value, today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date()) }));
+  ok(picked.d === picked.today && /^\d\d:\d\d$/.test(picked.t), 'Now fills in today and the current time: ' + picked.d + ' ' + picked.t);
   await A.page.selectOption('#sc-rep', '2'); await A.page.fill('#sc-msg', 'Exam prep for Paper 1');
   await A.page.click('#f-sched button[type=submit]');
   await A.page.waitForSelector('text=Scheduled ✔');
