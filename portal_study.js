@@ -77,40 +77,50 @@
   /* ---------------------------------------------------------------- decrypt and index the notes */
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   function index(data) {
-    D.figs = data.figs || {}; D.list = [];
-    ['maths', 'phys', 'chem', 'life'].forEach((sj) => (data.topics[sj] || []).forEach((t) => { t.subj = sj; t.practice = (data.practice || {})[t.id] || []; D.list.push(t); D.TOPIC[t.id] = t; t.sections.forEach((s, i) => { D.SECTION[s.id] = { topic: t, sec: s, idx: i }; }); t.practice.forEach((q) => { D.QUESTION[q.id] = { topic: t, q }; }); }));
+    Object.assign(D.figs, data.figs || {});
+    ['maths', 'phys', 'chem', 'life'].forEach((sj) => (data.topics[sj] || []).forEach((t) => { if (D.TOPIC[t.id]) return; t.subj = sj; t.practice = (data.practice || {})[t.id] || []; D.list.push(t); D.TOPIC[t.id] = t; t.sections.forEach((s, i) => { D.SECTION[s.id] = { topic: t, sec: s, idx: i }; }); t.practice.forEach((q) => { D.QUESTION[q.id] = { topic: t, q }; }); }));
   }
-  ADV.loadContent = async function () {
-    if (state.contentReady || state.contentLoading) return; state.contentLoading = true; state.contentError = '';
-    try {
-      if (window.ADV_DEV_CONTENT) index(window.ADV_DEV_CONTENT);
-      else {
-        if (!window.crypto || !crypto.subtle || typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open the notes. Update Chrome or Safari, or use another browser.');
-        const [rows, buf] = await Promise.all([
-          sb.select('content_keys', { select: 'k', id: 'eq.' + (CFG.contentKeyId || 'v1') }),
-          fetch(CFG.contentUrl || ('content.bin?v=' + (CFG.contentVersion || '1'))).then((r) => { if (!r.ok) throw new Error('The notes could not be downloaded (' + r.status + ').'); return r.arrayBuffer(); })
-        ]);
-        if (!rows.length) throw new Error('locked');
-        const key = await crypto.subtle.importKey('raw', b64(rows[0].k), 'AES-GCM', false, ['decrypt']);
+  /* One encrypted file per grade (Grade 12 = content.bin, content-10.bin, content-11.bin): a learner downloads only the
+     grade they open; other grades load when they are opened. */
+  const LOADED = {}, LOADING = {}; let keyP = null;
+  const gradeHasNotes = (gr) => OUT.some((t) => grOf(t) === gr);
+  const binUrl = (gr) => (gr === 12 && CFG.contentUrl) || ((gr === 12 ? 'content.bin' : 'content-' + gr + '.bin') + '?v=' + (CFG.contentVersion || '1'));
+  ADV.hasGrade = (gr) => { gr = Number(gr) || 12; return !!LOADED[gr] || !gradeHasNotes(gr); };
+  ADV.loadContent = function (gr) {
+    gr = Number(gr) || ADV.viewGrade();
+    if (window.ADV_DEV_CONTENT) {   // local tests: everything in one plain bundle
+      if (!state.contentReady) { index(window.ADV_DEV_CONTENT); [10, 11, 12].forEach((g) => { LOADED[g] = true; }); state.contentReady = true; ADV.loadNotes(); }
+      return Promise.resolve();
+    }
+    if (ADV.hasGrade(gr)) return Promise.resolve();
+    if (LOADING[gr]) return LOADING[gr];
+    if (!window.crypto || !crypto.subtle || typeof DecompressionStream === 'undefined') { state.contentError = 'This browser is too old to open the notes. Update Chrome or Safari, or use another browser.'; return Promise.resolve(); }
+    state.contentLoading = true; state.contentError = '';
+    const p = (async () => {
+      try {
+        if (!keyP) keyP = sb.select('content_keys', { select: 'k', id: 'eq.' + (CFG.contentKeyId || 'v1') }).then((rows) => { if (!rows.length) throw new Error('locked'); return crypto.subtle.importKey('raw', b64(rows[0].k), 'AES-GCM', false, ['decrypt']); });
+        const [key, buf] = await Promise.all([keyP, fetch(binUrl(gr)).then((r) => { if (!r.ok) throw new Error('The notes could not be downloaded (' + r.status + ').'); return r.arrayBuffer(); })]);
         const bytes = new Uint8Array(buf);
         const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(0, 12) }, key, bytes.slice(12));
         const text = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
         index(JSON.parse(text));
+        LOADED[gr] = true;
+        if (!state.contentReady) { state.contentReady = true; ADV.loadNotes(); }
+      } catch (e) {
+        console.error(e); keyP = null;
+        state.contentError = e.message === 'locked' ? 'locked' : (navigator.onLine === false ? 'You are offline – connect to the internet to open the notes.' : ADV.errMsg(e));
+        if (e.message === 'locked') state.approved = false;
       }
-      state.contentReady = true;
-      ADV.loadNotes();
-    } catch (e) {
-      console.error(e);
-      state.contentError = e.message === 'locked' ? 'locked' : (navigator.onLine === false ? 'You are offline – connect to the internet to open the notes.' : ADV.errMsg(e));
-      if (e.message === 'locked') state.approved = false;
-    }
-    state.contentLoading = false;
+    })().then(() => { delete LOADING[gr]; state.contentLoading = Object.keys(LOADING).length > 0; });
+    LOADING[gr] = p; return p;
   };
-  const ready = () => state.approved && state.contentReady;
+  const ready = (gr) => state.approved && ADV.hasGrade(gr || ADV.viewGrade());
+  /* the notes for this grade are not open yet: start loading them (once) and re-render when they arrive */
+  const ensureGrade = (gr) => { if (state.approved && !ADV.hasGrade(gr) && !LOADING[gr] && !state.contentError) ADV.loadContent(gr).then(() => ADV.render()); };
   const waitCard = () => state.contentError && state.contentError !== 'locked'
     ? '<div class="card"><b>The notes did not open</b><p class="small muted" style="margin-top:4px">' + esc(state.contentError) + '</p><div class="row" style="margin-top:10px"><button class="btn sm" data-action="content-retry">Try again</button></div></div>'
     : '<div class="card"><p class="muted">Opening your study notes…</p></div>';
-  ADV.actions['content-retry'] = async () => { state.contentReady = false; await ADV.loadContent(); ADV.render(); };
+  ADV.actions['content-retry'] = async () => { state.contentError = ''; await ADV.loadContent(ADV.viewGrade()); ADV.render(); };
 
   /* ---------------------------------------------------------------- tutor notes (annotations) */
   state.notes = [];
@@ -239,7 +249,7 @@
     const o = OT[id]; if (!o) return '<div class="card"><p>Topic not found.</p></div>';
     state.gr = grOf(o);   // "back" returns to this topic's grade
     if (!state.approved) return lockedTopic(o);
-    if (!state.contentReady) { if (!state.contentLoading && !state.contentError) ADV.loadContent().then(() => ADV.render()); return state.contentError === 'locked' ? lockedTopic(o) : waitCard(); }
+    if (!ADV.hasGrade(grOf(o))) { ensureGrade(grOf(o)); return state.contentError === 'locked' ? lockedTopic(o) : waitCard(); }
     const t = D.TOPIC[id]; if (!t) return lockedTopic(o);
     const e = est(o); const st = P.topics[id] || '';
     return '<div class="stack" id="topic-root">' +
@@ -453,7 +463,7 @@
     if (gr === 12) return (CFG.exams || []).map((e) => ({ key: e.id, title: e.subject + ' ' + e.paper, ids: examTopics(e).map((t) => t.id), marks: e.marks || 150 })).filter((m) => m.ids.length);
     const out = [];
     [['maths', 'P1'], ['maths', 'P2'], ['phys', 'P1'], ['chem', 'P2'], ['life', 'P1'], ['life', 'P2']].forEach(([sj, pp]) => {
-      const ts = paperTopics(sj, pp, gr); if (!ts.length) return;
+      const ts = paperTopics(sj, pp, gr).filter((t) => !/^[^≈]*not listed/i.test(t.weight || '')); if (!ts.length) return;   // topics the exam guideline leaves out stay out of mock papers
       out.push({ key: gr + ':' + sj + ':' + pp, title: 'Grade ' + gr + ' ' + SUBJ_LONG[sj] + ' ' + (sj === 'phys' ? 'Paper 1 (Physics)' : sj === 'chem' ? 'Paper 2 (Chemistry)' : 'Paper ' + pp.slice(1)), ids: ts.map((t) => t.id), marks: PAPER_MARKS[gr + ':' + sj] || 150 });
     });
     return out;
@@ -481,7 +491,7 @@
       exams.map((e) => '<tr><td>' + esc(e.subject + ' ' + e.paper) + '</td><td>' + esc(fmt.long(e.when)) + '</td><td class="mono">' + esc(fmt.time(e.when)) + '</td><td>' + e.hours + ' h</td><td>' + e.marks + '</td></tr>').join('') + '</tbody></table></div><p class="small muted" style="margin-top:8px">Confirm with the school; the DBE can amend the timetable.</p></div>';
     const total = OUT.filter((t) => grOf(t) === gr).reduce((n, t) => n + (t.pc || 0), 0);
     const mock = '<div class="card"><span class="eyebrow">Practice under exam conditions</span><h3 style="margin-top:4px">Generate a Grade ' + gr + ' mock paper</h3><p class="small muted" style="margin-top:4px">Builds a fresh full-length paper from the ' + total + ' Grade ' + gr + ' exam-style questions, spread over the paper\'s topics. New questions every time.</p><div class="row" style="margin-top:10px">' +
-      (!sets.length ? '<span class="small muted">The Grade ' + gr + ' questions are being prepared.</span>' : ready() ? sets.map((m) => '<button class="btn" data-action="mock" data-id="' + esc(m.key) + '">' + esc(m.title.replace(/^Grade \d+ /, '')) + '</button>').join('') : '<span class="small muted">' + ICON.lock + ' Opens once the tutor approves your account.</span>') + '</div></div>' + (ready() ? mockHtml() : '');
+      (!sets.length ? '<span class="small muted">The Grade ' + gr + ' questions are being prepared.</span>' : ready(gr) ? sets.map((m) => '<button class="btn" data-action="mock" data-id="' + esc(m.key) + '">' + esc(m.title.replace(/^Grade \d+ /, '')) + '</button>').join('') : state.approved ? (ensureGrade(gr), '<span class="small muted">' + (state.contentError && state.contentError !== 'locked' ? esc(state.contentError) + ' <button class="btn sm" data-action="content-retry">Try again</button>' : 'Opening the Grade ' + gr + ' questions…') + '</span>') : '<span class="small muted">' + ICON.lock + ' Opens once the tutor approves your account.</span>') + '</div></div>' + (ready(gr) ? mockHtml() : '');
     const todayKey = fmt.key(ADV.now());
     const plan = '<div class="card"><span class="eyebrow">Study plan</span><h3 style="margin-top:4px">From today to the last paper</h3><p class="small muted" style="margin-top:4px">Highest-weight topics first, a full past paper every second day, light revision the day before each exam. Tick days off as you finish them.</p><div style="margin-top:12px">' +
       PLAN.filter((p) => p.d >= todayKey || P.plan[p.d]).map((p) => { const ex = exams.find((e) => e.id === p.exam); const done = !!P.plan[p.d]; const mins = p.f.reduce((n, id) => n + (OT[id] ? est(OT[id]).total : 0), 0); return '<div class="plan-day ' + (p.exam ? 'exam' : '') + '"><div class="d">' + (p.d === todayKey ? '<span class="pill accent">Today</span><br>' : '') + esc(fmt.date(p.d + 'T12:00:00+02:00')) + '</div><div style="min-width:0"><div class="row" style="gap:6px">' + (p.exam ? '<strong>' + esc(ex ? ex.subject + ' ' + ex.paper : '') + ' – exam day</strong>' : p.f.map(topicChip).join('') + '<button class="chipbtn ' + (done ? 'chem' : '') + '" data-action="plan" data-id="' + p.d + '">' + (done ? 'Done' : 'Mark done') + '</button>') + '</div>' + (p.note ? '<p class="small muted" style="margin-top:4px">' + esc(p.note) + '</p>' : '') + '</div></div>'; }).join('') + '</div></div>';

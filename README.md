@@ -1,4 +1,4 @@
-# Adventuity – Grade 12 Maths & Physical Sciences
+# Adventuity – Grades 10–12 Maths, Physical Sciences and Life Sciences
 
 Live site: https://katiso0623.github.io/adventuity-hub/  
 Learner and tutor portal: https://katiso0623.github.io/adventuity-hub/portal.html
@@ -8,12 +8,13 @@ Learner and tutor portal: https://katiso0623.github.io/adventuity-hub/portal.htm
 | Folder / file | What it is |
 |---|---|
 | `site/` | The published website (GitHub Pages deploys only this folder). |
-| `site/index.html`, `maths.html`, `physical-sciences.html` | Public pages that search engines index. They show topics and study times, but no notes. |
+| `site/index.html`, `maths.html`, `physical-sciences.html`, `life-sciences.html`, `grade-10.html`, `grade-11.html` | Public pages that search engines index. They show topics and study times, but no notes. |
 | `site/portal.html` | The portal app for learners and the tutor: bookings, lessons, messages and study. |
-| `site/content.bin` | The study notes, encrypted (gzip + AES-256-GCM). The key is stored in Supabase (`content_keys`). Only the tutor and learners the tutor has unlocked can read it. |
+| `site/content.bin`, `content-10.bin`, `content-11.bin` | The study notes for Grade 12, 10 and 11, encrypted (gzip + AES-256-GCM). One file per grade, so a learner downloads only the grade they open. The key is stored in Supabase (`content_keys`). Only the tutor and learners the tutor has unlocked can read them. |
 | `portal_*.js`, `sbmini.js`, `steps.js`, `figlib.js`, `*.css`, `app_head.html` | Source code of the portal. |
 | `backend/schema.sql` | Database tables, row-level security and functions (Supabase project `sxbpjowkcpysoxurfqzo`). |
-| `backend/functions/` | Edge functions: `signup`, `notify` (push alerts) and `admin-users` (tutor-only password reset and delete). |
+| `backend/functions/` | Edge functions: `signup`, `notify` (push alerts) and `admin-users` (admin-only: create tutor and learner logins with temporary passwords, password reset, delete). |
+| `backend/migrations/` | Changes to apply to the live database in date order (each one is also folded into `schema.sql`). |
 | `tools/` | Build, decrypt and test scripts. |
 | `floodline/` | The Adventuity Floodline website (flood line quotes, free flood check) and the protected Floodline Studio, live at `/floodline/`. Built by the separate Floodline project; only the deploy files are here. The Studio ships encrypted (`floodline/js/studio.bundle.enc`); its key is in Supabase (`floodline_private_assets`, admins only). `build_portal.py` copies this folder into `site/floodline/`. The public address is https://www.adventuity.co.za (Azure Static Web Apps, deployed from this folder by `.github/workflows/floodline-azure.yml`); the GitHub Pages copy carries canonical links to it. |
 | `floodline-com/` | The international Floodline website for https://www.adventuity.com (worldwide flood studies, country pages, the same protected Studio). Deployed to its own Azure Static Web App by the same workflow; previewable at `/floodline-com/`. Both sites have `pay.html` for paying accepted quotes online (Supabase function `floodline-pay`, Yoco). |
@@ -33,7 +34,7 @@ python3 build_portal.py          # writes site/  (needs secrets/content_key.b64 
 node tools/e2e.js out/e2e        # end-to-end test against tools/mock_supabase.py (local Postgres)
 ```
 
-The plain source files for the notes are not in this repository. Without them, the build decrypts the current `site/content.bin` and builds from that. You can also run that step yourself:
+The plain source files for the notes are not in this repository. Without them, the build decrypts the current `site/content.bin`, `content-10.bin` and `content-11.bin`, merges them and builds from that. You can also decrypt one file yourself:
 
 ```bash
 python3 tools/decrypt_content.py site/content.bin bundle.json --key secrets/content_key.b64

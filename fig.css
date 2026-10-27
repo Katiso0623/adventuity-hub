@@ -39,3 +39,4 @@ svg.fig.bio .lbl-s{font-size:11px;fill:var(--ink-2);font-family:var(--body);stro
 svg.fig.bio .lbl-i{font-size:13px;fill:var(--ink);font-style:italic;font-family:var(--body);stroke:none}
 svg.fig.bio .arrow{stroke:var(--fig2);stroke-width:2;fill:none}
 svg.fig.bio text.c0{fill:var(--fig1)} svg.fig.bio text.c1{fill:var(--fig2)} svg.fig.bio text.c2{fill:var(--fig3)} svg.fig.bio text.c3{fill:var(--fig4)}
+.fig-table th,.fig-table caption{text-transform:none;letter-spacing:normal}

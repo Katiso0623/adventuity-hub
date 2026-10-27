@@ -25,3 +25,5 @@
 .q-num{font-family:var(--mono);font-weight:600;font-size:.88rem;min-width:2.6rem}
 .q-txt{min-width:0;overflow-wrap:anywhere}
 .q-mk{font-family:var(--mono);font-size:.85rem;color:var(--ink-2);white-space:nowrap}
+/* keep algebra like "100x 5" as typed: no contextual "x"→"×" substitution in the body font */
+body{font-feature-settings:"calt" 0;font-variant-ligatures:no-contextual}

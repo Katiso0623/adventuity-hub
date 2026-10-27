@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /* Builds the public marketing / SEO pages for Adventuity into ../public/ (re-runnable).
      node tools/build_public.js [--out DIR] [--no-og]
-   Writes index.html, maths.html, physical-sciences.html, matric-exam-timetable-2026.html, topics/<id>.html (one per topic),
+   Writes index.html, maths.html, physical-sciences.html, life-sciences.html (the Grade 12 / NSC subject pages),
+   grade-10.html, grade-11.html, matric-exam-timetable-2026.html, topics/<id>.html (one per topic, all grades),
    404.html, sitemap.xml, robots.txt and og.png.  --bundle <bundle.json> reads topics/practice from a decrypted bundle.
+   Grades 10–11 and Life Sciences arrive in chunks; a chunk that is not written yet is skipped and its block says "coming soon".
    The study material is protected: only topic titles, section titles, paper, weighting string, counts,
    marks and estimated study time are taken from the content files (see pub()). Nothing else may be read
    into the pages – no overview, know, definitions, methods, examples, questions, memos or quiz text. */
@@ -19,12 +21,14 @@ const SKIP_OG = args.includes('--no-og');
 
 // the site address comes from cfg.json (siteUrl) so moving to an own domain is a one-line change
 const BASE = (() => { try { const u = JSON.parse(fs.readFileSync(path.join(ROOT, 'cfg.json'), 'utf8')).siteUrl; if (u) return u.replace(/\/?$/, '/'); } catch (e) { /* default */ } return 'https://katiso0623.github.io/adventuity-hub/'; })();
-const TODAY = '2026-10-12'; // sitemap lastmod / dateModified
+const CFG = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'cfg.json'), 'utf8')); } catch (e) { return {}; } })();
+const TODAY = '2026-10-27'; // sitemap lastmod / dateModified
 const BRAND = 'Adventuity';
 const LEGAL = 'Adventuity (Pty) Ltd';
 const SLOGAN = 'Transforming ideas into reality.';
 const FONTS = 'https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap';
-const FEES = { maths: 250, phys: 250, chem: 250, group: 100 }; // defaults; live values replace them in the browser
+const FEES = { maths: 250, phys: 250, chem: 250, life: 250, group: 100 }; // defaults; live values replace them in the browser
+const FEE_KEYS = ['maths', 'phys', 'chem', 'life'];
 const DURATIONS = [60, 90, 120];
 const MIN_PER_MARK = 1.2; // 150 marks in 180 minutes
 const QUIZ_MIN = 10;
@@ -38,28 +42,67 @@ function load(file) {
   vm.runInNewContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox, { filename: file });
   return sandbox.window;
 }
-const W = {};
+// Grades 10–11 and Life Sciences come in chunks: <name>.js + practice_<name>.js + figs_<name>.js (CONTENT_/PRACTICE_<NAME>).
+// The same list and the same rule as tools/dump_content.js: a chunk whose three files are not all there yet, or that does not load, is skipped.
+const EXTRA = { maths: ['maths10_a', 'maths10_b', 'maths11_a', 'maths11_b'], phys: ['phys10', 'phys11'], chem: ['chem10', 'chem11'], life: ['life10_a', 'life10_b', 'life11_a', 'life11_b', 'life12_a', 'life12_b'] };
+const SRC = { maths: [], phys: [], chem: [], life: [] };   // raw topic objects per subject – read only through pub()
+let BANK = {};
 const BUNDLE = argVal('--bundle');   // decrypted study bundle (when the plain source files are not on disk)
 if (BUNDLE) {
   const b = JSON.parse(fs.readFileSync(path.resolve(BUNDLE), 'utf8'));
-  Object.assign(W, { CONTENT_MATHS_A: b.topics.maths, CONTENT_MATHS_B: [], CONTENT_MATHS_C: [], CONTENT_MATHS_D: [], CONTENT_PHYSICS: b.topics.phys, CONTENT_CHEM: b.topics.chem, PRACTICE_MATHS_A: b.practice });
-} else ['maths_a', 'maths_b', 'maths_c', 'maths_d', 'physics', 'chem',
-  'practice_maths_a', 'practice_maths_b', 'practice_maths_c', 'practice_maths_d', 'practice_physics', 'practice_chem']
-  .forEach((f) => Object.assign(W, load(f + '.js')));
-const BANK = Object.assign({}, W.PRACTICE_MATHS_A, W.PRACTICE_MATHS_B, W.PRACTICE_MATHS_C, W.PRACTICE_MATHS_D, W.PRACTICE_PHYSICS, W.PRACTICE_CHEM);
+  const T = b.topics || {};
+  for (const k of Object.keys(SRC)) SRC[k] = Array.isArray(T[k]) ? T[k] : [];   // an older bundle has no topics.life
+  BANK = b.practice || {};
+} else {
+  const W = {};
+  ['maths_a', 'maths_b', 'maths_c', 'maths_d', 'physics', 'chem',
+    'practice_maths_a', 'practice_maths_b', 'practice_maths_c', 'practice_maths_d', 'practice_physics', 'practice_chem']
+    .forEach((f) => Object.assign(W, load(f + '.js')));
+  SRC.maths = [].concat(W.CONTENT_MATHS_A, W.CONTENT_MATHS_B, W.CONTENT_MATHS_C, W.CONTENT_MATHS_D);
+  SRC.phys = W.CONTENT_PHYSICS; SRC.chem = W.CONTENT_CHEM;
+  BANK = Object.assign({}, W.PRACTICE_MATHS_A, W.PRACTICE_MATHS_B, W.PRACTICE_MATHS_C, W.PRACTICE_MATHS_D, W.PRACTICE_PHYSICS, W.PRACTICE_CHEM);
+  const only = process.env.ADV_ONLY ? process.env.ADV_ONLY.split(',') : null;
+  for (const [sj, names] of Object.entries(EXTRA)) for (const name of names) {
+    if (only && !only.includes(name)) continue;
+    const files = [name, 'practice_' + name, 'figs_' + name].map((f) => f + '.js');
+    if (!files.every((f) => fs.existsSync(path.join(ROOT, f)))) continue;   // not written yet
+    const N = name.toUpperCase();
+    try {
+      const c = load(files[0])['CONTENT_' + N], p = load(files[1])['PRACTICE_' + N];
+      if (!Array.isArray(c)) { console.warn('note: chunk', name, 'skipped (no CONTENT_' + N + ')'); continue; }
+      SRC[sj] = SRC[sj].concat(c); Object.assign(BANK, p || {});
+    } catch (e) { console.warn('note: chunk', name, 'skipped (does not load: ' + e.message + ')'); }
+  }
+}
 const round5 = (x) => Math.round(x / 5) * 5;
+const grOf = (t) => Number(t && t.gr) || 12;   // same rule as the portal: no grade = Grade 12
 
-function pub(t) { // the ONLY place content is read – whitelist of public fields
+function pub(t, subj) { // the ONLY place content is read – whitelist of public fields
   const qs = BANK[t.id] || [];
   const sections = (t.sections || []).map((s) => ({ title: String(s.title), est: Number(s.est) || 0 }));
   const notes = sections.reduce((a, s) => a + s.est, 0);
   const marks = qs.reduce((a, q) => a + (Number(q.marks) || 0), 0);
   const exam = round5(marks * MIN_PER_MARK);
-  return { id: String(t.id), title: String(t.title), paper: String(t.paper), weight: String(t.weight || ''), sections, nQ: qs.length, marks, notes, exam, quiz: QUIZ_MIN, total: notes + exam + QUIZ_MIN };
+  return { id: String(t.id), subj, gr: grOf(t), title: String(t.title), paper: String(t.paper), weight: String(t.weight || ''), sections, nQ: qs.length, marks, notes, exam, quiz: QUIZ_MIN, total: notes + exam + QUIZ_MIN };
 }
-const MATHS = [...W.CONTENT_MATHS_A, ...W.CONTENT_MATHS_B, ...W.CONTENT_MATHS_C, ...W.CONTENT_MATHS_D].map(pub);
-const PHYS = W.CONTENT_PHYSICS.map(pub);
-const CHEM = W.CONTENT_CHEM.map(pub);
+// a topic gets a page only if it is complete enough: an id that is safe as a file name (and not used yet), a paper,
+// sections, a title and Grade 10–12. Physical Sciences: Physics is Paper 1 and Chemistry Paper 2 (as in the portal).
+const ID_RE = /^[a-z0-9][a-z0-9_-]{0,80}$/i;
+const TOPICS = [];   // every public topic, all grades (pub() fields only)
+const seenIds = new Set();
+for (const sj of Object.keys(SRC)) for (const t of SRC[sj]) {
+  const id = String((t && t.id) || '');
+  const why = !t || typeof t !== 'object' ? 'not a topic object' : !ID_RE.test(id) ? 'id cannot be a file name' : seenIds.has(id) ? 'duplicate id'
+    : !t.title ? 'no title' : !/^P[12]$/.test(String(t.paper)) ? 'paper is not P1/P2' : (sj === 'phys' && t.paper !== 'P1') || (sj === 'chem' && t.paper !== 'P2') ? 'Physics must be P1, Chemistry P2'
+      : !Array.isArray(t.sections) || !t.sections.length ? 'no sections' : ![10, 11, 12].includes(grOf(t)) ? 'grade is not 10, 11 or 12' : '';
+  if (why) { console.warn('note: topic skipped (' + why + '):', sj, id || '?'); continue; }
+  seenIds.add(id); TOPICS.push(pub(t, sj));
+}
+const of = (subj, gr, paper) => TOPICS.filter((t) => t.subj === subj && t.gr === gr && (!paper || t.paper === paper));
+const MATHS = of('maths', 12);
+const PHYS = of('phys', 12);
+const CHEM = of('chem', 12);
+const LIFE = of('life', 12);
 const ORDER = { P1: ['cubic', 'sequences', 'functions', 'finance', 'calculus', 'counting'], P2: ['stats', 'analytical', 'trig', 'trig3d', 'euclid'] };
 function mathsPaper(p) {
   const list = ORDER[p].map((id) => { const t = MATHS.find((x) => x.id === id); if (!t) throw new Error('Missing maths topic ' + id); return t; });
@@ -78,32 +121,56 @@ const EXAMS = {
   mp2: { short: 'Maths P2', name: 'Mathematics Paper 2', date: '2026-10-26', subj: 'maths' },
   pp1: { short: 'Physics P1', name: 'Physical Sciences Paper 1 (Physics)', date: '2026-10-30', subj: 'phys' },
   pp2: { short: 'Chemistry P2', name: 'Physical Sciences Paper 2 (Chemistry)', date: '2026-11-02', subj: 'chem' },
+  lp1: { short: 'Life Sciences P1', name: 'Life Sciences Paper 1', date: '2026-11-13', subj: 'life', hours: 2.5 },
+  lp2: { short: 'Life Sciences P2', name: 'Life Sciences Paper 2', date: '2026-11-16', subj: 'life', hours: 2.5 },
 };
-for (const e of Object.values(EXAMS)) { const x = day(e.date); e.at = e.date + 'T09:00:00+02:00'; e.dm = x.d + ' ' + x.mon; e.full = x.wd + ' ' + x.d + ' ' + x.mon + ' ' + x.y; e.wd = x.wd; e.wdl = x.wdl; e.long = x.wdl + ' ' + x.d + ' ' + x.monl + ' ' + x.y; }
+for (const e of Object.values(EXAMS)) {
+  const x = day(e.date); e.at = e.date + 'T09:00:00+02:00'; e.dm = x.d + ' ' + x.mon; e.full = x.wd + ' ' + x.d + ' ' + x.mon + ' ' + x.y; e.wd = x.wd; e.wdl = x.wdl; e.long = x.wdl + ' ' + x.d + ' ' + x.monl + ' ' + x.y;
+  e.hours = e.hours || 3; e.len = (e.hours % 1 ? Math.floor(e.hours) + '½' : e.hours) + ' hours'; e.marks = 150;
+}
+for (const c of CFG.exams || []) { const e = EXAMS[c.id]; if (e && String(c.when || '').slice(0, 10) !== e.date) console.warn('note: exam', c.id, 'is', e.date, 'here but', c.when, 'in cfg.json'); }
 
-const SUBJECTS = {
-  maths: {
-    file: 'maths.html', name: 'Mathematics', cls: 'maths',
-    papers: [
-      { key: 'p1', label: 'Paper 1', theme: 'algebra, functions, finance, calculus and probability', exam: EXAMS.mp1, topics: mathsPaper('P1'), cls: 'maths' },
-      { key: 'p2', label: 'Paper 2', theme: 'statistics, analytical geometry, trigonometry and Euclidean geometry', exam: EXAMS.mp2, topics: mathsPaper('P2'), cls: 'maths' },
-    ],
-  },
-  sci: {
-    file: 'physical-sciences.html', name: 'Physical Sciences', cls: 'phys',
-    papers: [
-      { key: 'p1', label: 'Paper 1', theme: 'Physics', exam: EXAMS.pp1, topics: PHYS, cls: 'phys' },
-      { key: 'p2', label: 'Paper 2', theme: 'Chemistry', exam: EXAMS.pp2, topics: CHEM, cls: 'chem' },
-    ],
-  },
+// subjects and their papers – the same for every grade; Grade 12 papers also have an NSC exam
+const SUBJ_META = {
+  maths: { key: 'maths', name: 'Mathematics', short: 'Maths', cls: 'maths', fees: ['maths'], file: 'maths.html',
+    papers: [{ key: 'p1', label: 'Paper 1', sub: '', short: 'Maths P1', subj: 'maths', paper: 'P1', cls: 'maths', exam: 'mp1', theme: 'algebra, functions, finance, calculus and probability' },
+      { key: 'p2', label: 'Paper 2', sub: '', short: 'Maths P2', subj: 'maths', paper: 'P2', cls: 'maths', exam: 'mp2', theme: 'statistics, analytical geometry, trigonometry and Euclidean geometry' }] },
+  sci: { key: 'sci', name: 'Physical Sciences', short: 'Physical Sciences', cls: 'phys', fees: ['phys', 'chem'], file: 'physical-sciences.html',
+    papers: [{ key: 'p1', label: 'Paper 1', sub: 'Physics', short: 'Physics P1', subj: 'phys', paper: 'P1', cls: 'phys', exam: 'pp1', theme: 'Physics' },
+      { key: 'p2', label: 'Paper 2', sub: 'Chemistry', short: 'Chemistry P2', subj: 'chem', paper: 'P2', cls: 'chem', exam: 'pp2', theme: 'Chemistry' }] },
+  life: { key: 'life', name: 'Life Sciences', short: 'Life Sciences', cls: 'life', fees: ['life'], file: 'life-sciences.html',
+    papers: [{ key: 'p1', label: 'Paper 1', sub: '', short: 'Life Sciences P1', subj: 'life', paper: 'P1', cls: 'life', exam: 'lp1', theme: '' },
+      { key: 'p2', label: 'Paper 2', sub: '', short: 'Life Sciences P2', subj: 'life', paper: 'P2', cls: 'life', exam: 'lp2', theme: '' }] },
 };
+const SUBJ_ORDER = ['maths', 'sci', 'life'];
 const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
-for (const s of Object.values(SUBJECTS)) {
+function addTotals(s) {
   for (const p of s.papers) { p.total = sum(p.topics, (t) => t.total); p.nSec = sum(p.topics, (t) => t.sections.length); p.nQ = sum(p.topics, (t) => t.nQ); p.marks = sum(p.topics, (t) => t.marks); }
   s.total = sum(s.papers, (p) => p.total); s.nTopics = sum(s.papers, (p) => p.topics.length); s.nSec = sum(s.papers, (p) => p.nSec); s.nQ = sum(s.papers, (p) => p.nQ);
+  return s;
 }
-const ALL = [...MATHS, ...PHYS, ...CHEM];
-const N = { topics: ALL.length, sections: sum(ALL, (t) => t.sections.length), q: sum(ALL, (t) => t.nQ), qM: sum(MATHS, (t) => t.nQ), qP: sum(PHYS, (t) => t.nQ), qC: sum(CHEM, (t) => t.nQ) };
+function subjectFor(key, gr) {   // a subject with its papers and topics in one grade
+  const m = SUBJ_META[key];
+  const papers = m.papers.map((pm) => Object.assign({}, pm, gr === 12 ? { exam: EXAMS[pm.exam] } : { exam: null, theme: '' },
+    { topics: key === 'maths' && gr === 12 ? mathsPaper(pm.paper) : of(pm.subj, gr, pm.paper) }));
+  return addTotals(Object.assign({}, m, { gr, papers }));
+}
+// Grade 12: one page per subject (NSC). Grades 10–11: one page per grade with all three subjects.
+const SUBJECTS = { maths: subjectFor('maths', 12), sci: subjectFor('sci', 12), life: subjectFor('life', 12) };
+const GRADES = {};
+for (const gr of [10, 11]) {
+  const subjects = {}; SUBJ_ORDER.forEach((k) => { subjects[k] = subjectFor(k, gr); });
+  const list = SUBJ_ORDER.map((k) => subjects[k]);
+  GRADES[gr] = { gr, file: 'grade-' + gr + '.html', name: 'Grade ' + gr, subjects, list,
+    nTopics: sum(list, (s) => s.nTopics), nSec: sum(list, (s) => s.nSec), nQ: sum(list, (s) => s.nQ), total: sum(list, (s) => s.total) };
+}
+const ALL = [...MATHS, ...PHYS, ...CHEM];   // the Grade 12 Maths / Physical Sciences topics (hand-written descriptions in INFO)
+const N = { topics: TOPICS.length, sections: sum(TOPICS, (t) => t.sections.length), q: sum(TOPICS, (t) => t.nQ),
+  qM: sum(TOPICS, (t) => (t.subj === 'maths' ? t.nQ : 0)), qS: sum(TOPICS, (t) => (t.subj === 'phys' || t.subj === 'chem' ? t.nQ : 0)), qL: sum(TOPICS, (t) => (t.subj === 'life' ? t.nQ : 0)) };
+const GR_PRESENT = [10, 11, 12].filter((g) => TOPICS.some((t) => t.gr === g));
+const GR_SPAN = GR_PRESENT.length > 1 ? 'Grades ' + GR_PRESENT[0] + '–' + GR_PRESENT[GR_PRESENT.length - 1] : 'Grade ' + (GR_PRESENT[0] || 12);
+const pl = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');   // 1 topic, 2 topics
+const andList = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
 
 /* ---------- formatting ---------- */
 const NB = ' ';
@@ -181,8 +248,21 @@ ${maskCss('.brand .mark', '--mark-img')}
 .nav a{color:var(--ink-2);text-decoration:none;font-weight:500;font-size:.93rem;padding:10px 12px;border-radius:999px;white-space:nowrap}
 .nav a:hover{color:var(--ink);background:var(--surface-2)}
 .nav a[aria-current="page"]{color:var(--ink);background:var(--surface-2);font-weight:600}
+.nav .ns{display:none}
 .top-cta{display:flex;gap:8px;flex:none}
-@media (max-width:1119px){.nav{display:none}.top-cta{margin-left:auto}}
+@media (max-width:1119px){
+  html{scroll-padding-top:116px}
+  .topbar .wrap{flex-wrap:wrap;row-gap:2px;min-height:0;padding-top:8px}
+  .top-cta{margin-left:auto}
+  .nav{order:3;flex:1 0 100%;margin:0;padding:0 0 6px;overflow-x:auto;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav a{padding:8px 12px;font-size:.9rem}
+}
+@media (max-width:699px){
+  .nav{justify-content:space-between;gap:0;margin-inline:-8px}
+  .nav .nl{display:none}.nav .ns{display:inline}
+  .nav a{padding:8px 8px;font-size:.88rem}
+}
 @media (max-width:400px){.top-cta .signin{display:none}}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:10px 18px;font-weight:600;font-size:.95rem;font-family:var(--body);text-decoration:none;line-height:1.2;white-space:nowrap;cursor:pointer}
 .btn:hover{border-color:var(--ink-2)}
@@ -197,6 +277,7 @@ ${maskCss('.brand .mark', '--mark-img')}
 .pill.maths{background:var(--maths-soft);color:var(--maths)}
 .pill.phys{background:var(--phys-soft);color:var(--phys)}
 .pill.chem{background:var(--chem-soft);color:var(--chem)}
+.pill.life{background:var(--life-soft);color:var(--life)}
 .pill.accent{background:var(--accent-soft);color:var(--accent)}
 .card>.pill{justify-self:start}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
@@ -245,14 +326,14 @@ ${maskCss('.logo-full', '--logo-img')}
 .facts li b{font-weight:600}
 .cd-wrap{margin-top:26px;padding-top:18px;border-top:1px dashed var(--line)}
 .countdown{list-style:none;padding:0;margin:10px 0 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-@media (min-width:760px){.countdown{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (min-width:760px){.countdown{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .cd{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface);display:grid;gap:4px;min-width:0}
 .cd .subj{display:flex;align-items:center;gap:7px;font-weight:600;font-size:.88rem}
 .cd .big{font-family:var(--mono);font-size:1.6rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
 .cd .big small{font-size:.8rem;color:var(--ink-2);font-family:var(--body);margin-left:5px}
 .cd.next{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .cd.past{opacity:.6}
-@media (max-width:420px){.cd{padding:11px 12px}.cd .when{font-size:.8rem}}
+@media (max-width:420px){.cd{padding:11px 12px}.cd .when{font-size:.8rem}.cd .subj{font-size:.8rem;gap:6px}}
 .feat{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
 .feat .card{display:grid;gap:8px;align-content:start}
 .ic{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;margin-bottom:4px}
@@ -261,7 +342,7 @@ ${maskCss('.logo-full', '--logo-img')}
 .steps{list-style:none;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(196px,100%),1fr));counter-reset:st}
 .steps li{counter-increment:st;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:6px;align-content:start}
 .steps li::before{content:counter(st);width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--mono);font-weight:600;font-size:.9rem;margin-bottom:4px}
-.fees{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.fees{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(196px,100%),1fr))}
 .fee{display:grid;gap:6px;align-content:start}
 .fee h3{margin-top:6px}
 .price{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;margin-top:6px}
@@ -272,6 +353,8 @@ ${maskCss('.logo-full', '--logo-img')}
 .durs li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.92rem}
 .durs li span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .subjects{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.subjects+.subjects{margin-top:12px}
+.papers dd.soon-t{font-family:var(--body);color:var(--ink-2)}
 .subj-card{display:grid;gap:12px;align-content:start}
 .papers{display:grid;gap:8px}
 .papers div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2)}
@@ -285,7 +368,9 @@ ${maskCss('.logo-full', '--logo-img')}
 
 const CSS_SHARED = `
 .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--ink-2)}
-.dot.maths{background:var(--maths)}.dot.phys{background:var(--phys)}.dot.chem{background:var(--chem)}
+.dot.maths{background:var(--maths)}.dot.phys{background:var(--phys)}.dot.chem{background:var(--chem)}.dot.life{background:var(--life)}
+.soon{border-style:dashed;background:var(--surface);color:var(--ink-2);margin-top:10px}
+.soon b{color:var(--ink)}
 .note{display:flex;gap:12px;align-items:flex-start;border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 var(--r-sm) var(--r-sm) 0;margin-top:14px}
 .note svg{width:22px;height:22px;flex:none;color:var(--accent);margin-top:1px}
 .note p{color:var(--ink)}
@@ -354,7 +439,23 @@ const CSS_SUBJECT = `
 .other{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
 `;
 
+const CSS_GRADE = `
+.gswitch{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.gswitch a{display:inline-flex;align-items:center;min-height:40px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:600;font-size:.92rem}
+.gswitch a:hover{border-color:var(--ink-2)}
+.gswitch a[aria-current="page"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.jump{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;list-style:none;padding:0}
+.jump a{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500;font-size:.9rem}
+.jump a:hover{border-color:var(--ink-2)}
+.jump .mono{color:var(--ink-2);font-size:.82rem}
+.paper-sub{margin-top:22px}
+h4.t-title{margin:0}
+.ph{display:flex;align-items:center;gap:9px;font-size:1.12rem;margin-bottom:4px}
+.ph .muted{font-family:var(--body);font-weight:500;font-size:.92rem}
+`;
+
 /* ---------- shared page parts ---------- */
+const OG_ALT = 'Adventuity – Grade 10 to 12 Maths, Physical Sciences and Life Sciences tutoring online';
 function head(o) {
   const pre = o.abs ? BASE : (o.pre || '');
   if (o.title.length > 60) throw new Error(o.file + ': title is ' + o.title.length + ' chars (max 60): ' + o.title);
@@ -378,12 +479,12 @@ ${o.noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" co
 <meta property="og:image" content="${BASE}og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Adventuity – Grade 12 Maths and Physical Sciences tutoring online">
+<meta property="og:image:alt" content="${OG_ALT}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(o.ogTitle || o.title)}">
 <meta name="twitter:description" content="${esc(o.desc)}">
 <meta name="twitter:image" content="${BASE}og.png">
-<meta name="twitter:image:alt" content="Adventuity – Grade 12 Maths and Physical Sciences tutoring online">
+<meta name="twitter:image:alt" content="${OG_ALT}">
 <link rel="icon" type="image/png" sizes="32x32" href="${pre}icons/favicon-32.png">
 <link rel="apple-touch-icon" href="${pre}icons/apple-touch-icon.png">
 <link rel="manifest" href="${pre}manifest.webmanifest">
@@ -398,12 +499,13 @@ ${(o.ld || []).map(ld).join('\n')}
 function topbar(o) {
   const pre = o.abs ? BASE : (o.pre || '');
   const home = o.abs ? BASE : (o.pre || './');
-  const anchor = (h) => (o.current === 'index' ? h : home + h);
   const cur = (k) => (o.current === k ? ' aria-current="page"' : '');
+  // long labels on wide screens, short ones in the second row on phones (only one of the two is displayed, so only one is read)
+  const item = (href, k, long, short) => `<a href="${pre}${href}"${cur(k)}><span class="nl">${long}</span><span class="ns">${short}</span></a>`;
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="topbar"><div class="wrap">
-<a class="brand" href="${home}"${o.current === 'index' ? ' aria-current="page"' : ''}><span class="mark" aria-hidden="true"></span><span><b>${BRAND}</b><small>Grade 12 tutoring online</small></span></a>
-<nav class="nav" aria-label="Main"><a href="${pre}maths.html"${cur('maths')}>Mathematics</a><a href="${pre}physical-sciences.html"${cur('sci')}>Physical Sciences</a><a href="${pre}${TT_FILE}"${cur('timetable')}>Exam dates</a><a href="${pre}tutor-apply.html"${cur('tutor')}>Teach with us</a><a href="${anchor('#fees')}">Fees</a><a href="${anchor('#faq')}">FAQ</a></nav>
+<a class="brand" href="${home}"${o.current === 'index' ? ' aria-current="page"' : ''}><span class="mark" aria-hidden="true"></span><span><b>${BRAND}</b><small>Grades 10–12 tutoring online</small></span></a>
+<nav class="nav" aria-label="Main">${item('maths.html', 'maths', 'Mathematics', 'Maths')}${item('physical-sciences.html', 'sci', 'Physical Sciences', 'Phys Sci')}${item('life-sciences.html', 'life', 'Life Sciences', 'Life Sci')}${item(GRADES[10].file, 'grades', 'Grades 10–11', 'Gr 10–11')}${item(TT_FILE, 'timetable', 'Exam dates', 'Exams')}</nav>
 <div class="top-cta"><a class="btn ghost signin" href="${pre}${PORTAL}">Sign in</a><a class="btn primary" href="${pre}${SIGNUP}">Book a lesson</a></div>
 </div></header>`;
 }
@@ -416,18 +518,21 @@ function footer(o) {
 <div class="foot-grid">
 <div><a class="brand" href="${home}"><span class="mark" aria-hidden="true"></span><span><b>${BRAND}</b><small>${LEGAL}</small></span></a>
 <p class="slogan">${SLOGAN}</p>
-<p class="small muted" style="margin-top:6px">Online Grade 12 Mathematics and Physical Sciences tutoring for matric learners across South Africa.</p></div>
+<p class="small muted" style="margin-top:6px">Online Mathematics, Physical Sciences and Life Sciences tutoring for Grades 10–12 across South Africa, with a focus on the matric (NSC) exams.</p></div>
 <nav aria-label="Learner links"><p class="eyebrow">Learners</p><ul>
 <li><a href="${pre}${SIGNUP}">Create a free account</a></li>
 <li><a href="${pre}${PORTAL}">Sign in to the learner portal</a></li>
 ${o.live ? '<li><a href="#" data-wa hidden target="_blank" rel="noopener">WhatsApp the tutor</a></li>' : ''}
+<li><a href="${anchor('#fees')}">Lesson fees</a></li>
+<li><a href="${anchor('#faq')}">Questions and answers</a></li>
 </ul></nav>
 <nav aria-label="Subject links"><p class="eyebrow">Subjects</p><ul>
 <li><a href="${pre}maths.html">Grade 12 Mathematics topics</a></li>
 <li><a href="${pre}physical-sciences.html">Grade 12 Physical Sciences topics</a></li>
+<li><a href="${pre}life-sciences.html">Grade 12 Life Sciences topics</a></li>
+<li><a href="${pre}${GRADES[10].file}">Grade 10 topics</a></li>
+<li><a href="${pre}${GRADES[11].file}">Grade 11 topics</a></li>
 <li><a href="${pre}${TT_FILE}">Matric exam timetable 2026</a></li>
-<li><a href="${anchor('#fees')}">Lesson fees</a></li>
-<li><a href="${anchor('#faq')}">Questions and answers</a></li>
 </ul></nav>
 <nav aria-label="Tutor links"><p class="eyebrow">Tutors</p><ul>
 <li><a href="${pre}tutor-apply.html">Teach with us – tutor jobs</a></li>
@@ -445,8 +550,8 @@ fetch(String(C.supabaseUrl).replace(/\\/+$/,'')+'/rest/v1/public_settings?select
 var s={};(Array.isArray(rows)?rows:[]).forEach(function(x){s[x.key]=x.value});var f=s.fees;
 if(f&&typeof f==='object'){var rate=function(k){var v=Number(k==='group'?f.group:(f[k]!=null?f[k]:f['default']));return v>0?v:null};
 [].forEach.call(document.querySelectorAll('[data-fee]'),function(el){var k=el.getAttribute('data-fee'),v=rate(k);if(v==null)return;el.textContent=R(k==='group'?v:v*Number(el.getAttribute('data-min')||60)/60)});
-var lo=['maths','phys','chem'].map(rate).filter(function(v){return v!=null});if(lo.length)[].forEach.call(document.querySelectorAll('[data-fee-from]'),function(el){el.textContent=R(Math.min.apply(null,lo))})}
-var w=s.site&&s.site.whatsapp;if(w){var d=String(w).replace(/\\D/g,'');if(d.charAt(0)==='0')d='27'+d.slice(1);if(d.length>=11)[].forEach.call(document.querySelectorAll('[data-wa]'),function(el){el.href='https://wa.me/'+d+'?text='+encodeURIComponent('Hi, I would like to book a Grade 12 lesson.');el.hidden=false})}
+var lo=${JSON.stringify(FEE_KEYS).replace(/"/g, "'")}.map(rate).filter(function(v){return v!=null});if(lo.length)[].forEach.call(document.querySelectorAll('[data-fee-from]'),function(el){el.textContent=R(Math.min.apply(null,lo))})}
+var w=s.site&&s.site.whatsapp;if(w){var d=String(w).replace(/\\D/g,'');if(d.charAt(0)==='0')d='27'+d.slice(1);if(d.length>=11)[].forEach.call(document.querySelectorAll('[data-wa]'),function(el){el.href='https://wa.me/'+d+'?text='+encodeURIComponent('Hi, I would like to book a lesson.');el.hidden=false})}
 }).catch(function(){})})();</script>`;
 
 const COUNTDOWN_JS = `<script>(function(){var now=Date.now(),D=864e5,O=72e5,first=true;
@@ -459,16 +564,22 @@ if(first){el.classList.add('next');first=false}})})();</script>`;
 
 /* ---------- index.html ---------- */
 const POPULAR = ['calculus', 'trig', 'euclid', 'analytical', 'functions', 'newton', 'circuits', 'organic-reactions'];
+const minFee = () => Math.min(...FEE_KEYS.map((k) => FEES[k]));
 function buildIndex() {
   const url = BASE;
   const calc = MATHS.find((t) => t.id === 'calculus');
   const mp1 = SUBJECTS.maths.papers[0];
   const exList = Object.values(EXAMS);
-  const firstExam = exList[0];
+  const lastExam = exList.reduce((a, e) => (e.date > a.date ? e : a));
+  const g1011 = [GRADES[10], GRADES[11]];
+  const anyLower = g1011.some((g) => g.nTopics);
+  const allLower = g1011.every((g) => g.list.every((s) => s.nTopics));
 
   const FAQ = [
     ['Is it aligned to CAPS and the NSC exams?',
-      `<p>Yes. Every topic follows the CAPS Grade 12 curriculum and is grouped the way it is examined in the NSC papers: Mathematics Paper 1 and Paper 2, and Physical Sciences Paper 1 (Physics) and Paper 2 (Chemistry). Each topic shows its typical share of the 150 marks.</p>`],
+      `<p>Yes. Every topic follows the CAPS curriculum for its grade. Grade 12 topics are grouped the way they are examined in the NSC papers – Mathematics Paper 1 and Paper 2, Physical Sciences Paper 1 (Physics) and Paper 2 (Chemistry), and Life Sciences Paper 1 and Paper 2 – and each topic shows its typical share of the 150 marks. Grade 10 and 11 topics are grouped by the papers of the school and provincial exams.</p>`],
+    ['Do you also help Grade 10 and 11 learners?',
+      `<p>Yes. You can book lessons for Grade 10 and Grade 11 Mathematics, Physical Sciences and Life Sciences. ${anyLower ? `The <a href="${GRADES[10].file}">Grade 10</a> and <a href="${GRADES[11].file}">Grade 11</a> pages list the topics that have notes and exam-style questions in the portal, and how long each one takes to study${allLower ? '' : '; more topics are being added'}.` : 'Notes and exam-style questions for Grades 10 and 11 are being added to the portal.'} Grade 10 and 11 exams are set by your school or province and are written in June and November.</p>`],
     ['How do I pay for a lesson?',
       `<p>You pay only after the tutor has confirmed your booking, by EFT. The banking details and your payment reference are shown in the portal once your booking is accepted, and you upload your proof of payment there. The current fees are listed under Fees on this page and in the portal before you request a lesson.</p>`],
     ['What do I need for an online lesson?',
@@ -485,24 +596,25 @@ function buildIndex() {
       `<p>Yes. When the tutor schedules a group class on a topic, you can request a seat in the portal. A seat costs less than a one-on-one lesson; the price per seat is shown on each class.</p>`],
   ];
 
-  const desc = `Online Grade 12 Maths and Physical Sciences lessons for matric learners anywhere in South Africa. CAPS-aligned, with notes and ${N.q} exam-style questions.`;
+  const desc = firstFit([`Online Maths, Physical Sciences and Life Sciences lessons for Grades 10–12 across South Africa – matric (NSC) focus, CAPS notes and ${N.q} exam questions.`,
+    'Online Maths, Physical Sciences and Life Sciences lessons for Grades 10–12 across South Africa – matric (NSC) focus, CAPS-aligned notes and questions.'], 155, 'index description');
   const org = {
     '@type': 'EducationalOrganization', '@id': BASE + '#org', name: BRAND, legalName: LEGAL, url: BASE,
     logo: BASE + 'icons/icon-512.png', image: BASE + 'og.png', slogan: SLOGAN,
-    description: 'Online Grade 12 Mathematics and Physical Sciences tutoring (CAPS, NSC) for matric learners anywhere in South Africa.',
+    description: 'Online Mathematics, Physical Sciences and Life Sciences tutoring (CAPS) for Grade 10–12 learners anywhere in South Africa, with a focus on the Grade 12 NSC exams.',
     areaServed: { '@type': 'Country', name: 'South Africa', identifier: 'ZA' },
-    knowsAbout: ['Grade 12 Mathematics', 'Grade 12 Physical Sciences', 'Physics', 'Chemistry', 'CAPS', 'National Senior Certificate'],
+    knowsAbout: ['Grade 12 Mathematics', 'Grade 12 Physical Sciences', 'Grade 12 Life Sciences', 'Grade 10 and 11 Mathematics', 'Grade 10 and 11 Physical Sciences', 'Grade 10 and 11 Life Sciences', 'Physics', 'Chemistry', 'Biology', 'CAPS', 'National Senior Certificate'],
   };
   const service = {
-    '@type': 'Service', '@id': BASE + '#tutoring', name: 'Online one-on-one Grade 12 tutoring', serviceType: 'Tutoring',
-    description: 'Live one-on-one online lessons for Grade 12 Mathematics, Physics and Chemistry (CAPS / NSC). Lessons are 60, 90 or 120 minutes; pay by EFT after the tutor confirms the booking.',
+    '@type': 'Service', '@id': BASE + '#tutoring', name: 'Online one-on-one tutoring for Grades 10–12', serviceType: 'Tutoring',
+    description: 'Live one-on-one online lessons for Grade 10–12 Mathematics, Physical Sciences (Physics and Chemistry) and Life Sciences (CAPS), with a focus on the Grade 12 NSC exams. Lessons are 60, 90 or 120 minutes; pay by EFT after the tutor confirms the booking.',
     provider: { '@id': BASE + '#org' }, areaServed: { '@type': 'Country', name: 'South Africa', identifier: 'ZA' },
-    audience: { '@type': 'EducationalAudience', educationalRole: 'student', audienceType: 'Grade 12 (matric) learners' },
+    audience: { '@type': 'EducationalAudience', educationalRole: 'student', audienceType: 'Grade 10, 11 and 12 learners (matric focus)' },
     availableChannel: { '@type': 'ServiceChannel', name: 'Online lessons', serviceUrl: BASE + PORTAL },
     offers: [
-      { '@type': 'Offer', name: 'One-on-one lesson', price: FEES.maths, priceCurrency: 'ZAR', url: BASE + SIGNUP, availability: 'https://schema.org/InStock',
+      { '@type': 'Offer', name: 'One-on-one lesson', price: minFee(), priceCurrency: 'ZAR', url: BASE + SIGNUP, availability: 'https://schema.org/InStock',
         areaServed: { '@type': 'Country', name: 'South Africa', identifier: 'ZA' },
-        priceSpecification: { '@type': 'UnitPriceSpecification', price: FEES.maths, priceCurrency: 'ZAR', unitText: 'per hour', unitCode: 'HUR' } },
+        priceSpecification: { '@type': 'UnitPriceSpecification', price: minFee(), priceCurrency: 'ZAR', unitText: 'per hour', unitCode: 'HUR' } },
       { '@type': 'Offer', name: 'Group class seat', priceCurrency: 'ZAR', url: BASE + SIGNUP,
         priceSpecification: { '@type': 'PriceSpecification', minPrice: FEES.group, priceCurrency: 'ZAR', unitText: 'per seat' } },
     ],
@@ -510,12 +622,13 @@ function buildIndex() {
   const website = { '@type': 'WebSite', '@id': BASE + '#website', url: BASE, name: BRAND, inLanguage: 'en-ZA', publisher: { '@id': BASE + '#org' } };
   const faqLd = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: plain(a) } })) };
 
+  const qParts = [[N.qM, 'Mathematics'], [N.qS, 'Physical Sciences'], [N.qL, 'Life Sciences']].filter(([n]) => n).map(([n, s]) => n + ' for ' + s);
   const feat = [
     [IC.video, 'Live online lessons', 'One-on-one or group lessons in a private online classroom with video, screen share, a whiteboard and chat.'],
-    [IC.book, 'Study notes for every topic', `Clear notes for all ${N.topics} Grade 12 topics, split into ${N.sections} short sections and grouped by exam paper.`],
+    [IC.book, 'Study notes for every topic', `Clear notes for ${GR_PRESENT.length > 1 ? `${N.topics} topics across ${GR_SPAN}` : `all ${N.topics} Grade 12 topics`}, split into ${N.sections} short sections and grouped by exam paper.`],
     [IC.graph, 'Worked examples with diagrams', 'Graphs, sketches and labelled diagrams drawn right into the worked examples, so you can see what the question describes.'],
-    [IC.stairs, '<span class="nw">Step-by-step</span> calculations', 'Every worked example is solved one line at a time – the formula first, then the numbers substituted, then the answer with its unit – the way markers want to see it.'],
-    [IC.clip, `${N.q} <span class="nw">exam-style</span> questions`, `Past-paper-style questions with full marking memos: ${N.qM} for Mathematics, ${N.qP} for Physics and ${N.qC} for Chemistry.`],
+    [IC.stairs, '<span class="nw">Step-by-step</span> answers', 'Every worked example is answered one line at a time – formula, numbers substituted, answer with its unit; in Life Sciences each answer point – the way markers want to see it.'],
+    [IC.clip, `${N.q} <span class="nw">exam-style</span> questions`, `Past-paper-style questions with full marking memos: ${andList(qParts)}.`],
     [IC.timer, 'Quizzes and mock papers', 'A quick quiz at the end of each topic and mock papers to practise under real exam time.'],
     [IC.cal, 'A study plan to exam day', 'A day-by-day plan that counts down to your NSC exam dates, so every topic is covered in time.'],
     [IC.phone, 'Works on your phone', 'Use it on any phone, tablet or computer, or install it as an app – no app store needed.'],
@@ -525,21 +638,28 @@ function buildIndex() {
     ['Request a lesson', 'Ask for a one-on-one time (60, 90 or 120 minutes) or a seat in a group class, and pick the topics you want to cover.'],
     ['The tutor confirms', 'The tutor accepts your request or suggests another time. You get a notification and a confirmation in the portal, with the payment details.'],
     ['Join the lesson', 'At lesson time tap “Join the lesson”. A private online classroom opens with video, screen share, a whiteboard and chat – in the browser, or the free Jitsi Meet app on a phone.'],
-    ['Keep practising', `Between lessons, approved learners read the notes, worked examples with diagrams and step-by-step calculations, ${N.q} exam-style questions with memos, quizzes, mock papers and a study plan.`],
+    ['Keep practising', `Between lessons, approved learners read the notes, worked examples with diagrams and step-by-step answers, ${N.q} exam-style questions with memos, quizzes, mock papers and a study plan.`],
   ];
-  const feeCard = (k, subj, label, paper) => `<article class="card fee">
+  const feeCard = (k, label, paper) => `<article class="card fee">
 <span class="pill ${k}">${paper}</span>
 <h3>${label} lesson</h3>
 <p class="price"><b id="fee-${k}" data-fee="${k}">${rand(FEES[k])}</b><span>per hour, one-on-one</span></p>
 <ul class="durs" aria-label="${label} lesson cost by length">${DURATIONS.map((m) => `<li><span>${m} minutes</span><span data-fee="${k}" data-min="${m}">${rand(FEES[k] * m / 60)}</span></li>`).join('')}</ul>
 </article>`;
-  const paperRow = (p) => `<div><dt>${p.label}${p.theme.length < 12 ? ' · ' + p.theme : ''} <span class="muted">· ${p.exam.wd} ${p.exam.dm}</span></dt><dd>${p.topics.length} topics · ≈${NB}${dur(p.total)}</dd></div>`;
-  const subjCard = (s, title, link, linkText) => `<article class="card subj-card">
-<div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${s.papers.map((p) => `<span class="pill ${p.cls}">${p.label === 'Paper 1' && s.cls === 'phys' ? 'Physics' : p.label === 'Paper 2' && s.cls === 'phys' ? 'Chemistry' : 'Mathematics ' + p.label.replace('Paper ', 'P')}</span>`).join('')}</div>
-<h3>${title}</h3>
+  const paperRow = (p) => `<div><dt>${p.label}${p.sub ? ' · ' + p.sub : ''} <span class="muted">· ${p.exam.wd} ${p.exam.dm}</span></dt>${p.topics.length ? `<dd>${pl(p.topics.length, 'topic')} · ≈${NB}${dur(p.total)}</dd>` : '<dd class="soon-t">topics coming soon</dd>'}</div>`;
+  const pillTxt = (s, p) => (p.sub ? p.sub : s.name + ' ' + p.label.replace('Paper ', 'P'));
+  const subjCard = (s, linkText) => `<article class="card subj-card">
+<div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${s.papers.map((p) => `<span class="pill ${p.cls}">${pillTxt(s, p)}</span>`).join('')}</div>
+<h3>Grade 12 ${s.name}</h3>
 <dl class="papers">${s.papers.map(paperRow).join('')}</dl>
-<p class="topics-inline">${s.papers.map((p) => `<b>${p.label}:</b> ${p.topics.map((t) => esc(t.title)).join(' · ')}`).join('<br>')}</p>
-<p><a class="btn long" href="${link}">${linkText} ${svg(IC.arrow)}</a></p>
+<p class="topics-inline">${s.nTopics ? s.papers.filter((p) => p.topics.length).map((p) => `<b>${p.label}:</b> ${p.topics.map((t) => esc(t.title)).join(' · ')}`).join('<br>') : `The Grade 12 ${s.name} notes and exam-style questions are being added – you can already book a lesson.`}</p>
+<p><a class="btn long" href="${s.file}">${linkText} ${svg(IC.arrow)}</a></p>
+</article>`;
+  const gradeCard = (g) => `<article class="card subj-card">
+<div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill accent">${g.name}</span><span class="pill">School and provincial exams</span></div>
+<h3>${g.name} Mathematics, Physical Sciences and Life Sciences</h3>
+<dl class="papers">${g.list.map((s) => `<div><dt>${s.name}</dt>${s.nTopics ? `<dd>${pl(s.nTopics, 'topic')} · ≈${NB}${dur(s.total)}</dd>` : '<dd class="soon-t">coming soon</dd>'}</div>`).join('')}</dl>
+<p><a class="btn long" href="${g.file}">${g.name} topics and study time ${svg(IC.arrow)}</a></p>
 </article>`;
 
   const body = `<body>
@@ -548,15 +668,16 @@ ${topbar({ current: 'index' })}
 <section class="hero" aria-labelledby="h1">
 <div class="hero-grid">
 <div>
-<p class="eyebrow">CAPS · NSC finals 2026 · Live online lessons</p>
-<h1 id="h1" style="margin-top:10px">Grade 12 Maths &amp; Physical Sciences tutoring online&nbsp;– anywhere in South Africa</h1>
-<p class="lead">Book a live one-on-one lesson for the matric topics you find hard, then keep practising between lessons with study notes, step-by-step worked examples and ${N.q} exam-style questions with memos.</p>
+<p class="eyebrow">CAPS · Grades 10–12 · NSC finals 2026 · Live online lessons</p>
+<h1 id="h1" style="margin-top:10px">Grade 12 Maths, Physical Sciences &amp; Life Sciences tutoring online</h1>
+<p class="lead">Live one-on-one lessons for matric learners anywhere in South Africa – and for Grades 10 and 11 too. Between lessons, keep practising with study notes, step-by-step worked examples and ${N.q} exam-style questions with memos.</p>
 <div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="${PORTAL}">Sign in</a><a class="btn wa lg" href="#" data-wa hidden target="_blank" rel="noopener">${svg(IC.chat)}WhatsApp us</a></div>
 <ul class="facts" aria-label="At a glance">
-<li><b data-fee-from>${rand(Math.min(FEES.maths, FEES.phys, FEES.chem))}</b> per hour, one-on-one</li>
+<li><b data-fee-from>${rand(minFee())}</b> per hour, one-on-one</li>
 <li>Group classes from <b data-fee="group">${rand(FEES.group)}</b></li>
 <li>60, 90 or 120 minutes</li>
-<li>Maths, Physics and Chemistry</li>
+<li>Grades 10, 11 and 12</li>
+<li>Maths, Physical Sciences and Life Sciences</li>
 </ul>
 </div>
 <div class="hero-side" aria-hidden="true"><div class="logo-full"></div><p class="slogan">${SLOGAN}</p></div>
@@ -580,11 +701,12 @@ ${topbar({ current: 'index' })}
 </section>
 
 <section class="sec" id="fees" aria-labelledby="fees-h">
-<div class="sec-head"><p class="eyebrow">Fees</p><h2 id="fees-h">Simple hourly fees, paid after your booking is confirmed</h2><p>One-on-one lessons are priced per hour and run for 60, 90 or 120 minutes.</p></div>
+<div class="sec-head"><p class="eyebrow">Fees</p><h2 id="fees-h">Simple hourly fees, paid after your booking is confirmed</h2><p>One-on-one lessons are priced per hour and run for 60, 90 or 120 minutes. The fee depends on the subject, not the grade – the same for Grades 10, 11 and 12.</p></div>
 <div class="fees">
-${feeCard('maths', 'maths', 'Mathematics', 'Paper 1 and 2')}
-${feeCard('phys', 'phys', 'Physics', 'Physical Sciences P1')}
-${feeCard('chem', 'chem', 'Chemistry', 'Physical Sciences P2')}
+${feeCard('maths', 'Mathematics', 'Paper 1 and 2')}
+${feeCard('phys', 'Physics', 'Physical Sciences P1')}
+${feeCard('chem', 'Chemistry', 'Physical Sciences P2')}
+${feeCard('life', 'Life Sciences', 'Paper 1 and 2')}
 <article class="card fee"><span class="pill accent">Group class</span><h3>Group class seat</h3><p class="price"><span>from</span><b id="fee-group" data-fee="group">${rand(FEES.group)}</b><span>per seat</span></p><p>Online group classes on set topics, scheduled by the tutor. Seats are limited and the price is shown on each class.</p></article>
 </div>
 <div class="note">${svg(IC.lock)}<p><b>How payment works.</b> Request a lesson first – you pay nothing yet. Once the tutor accepts, pay by EFT using the banking details and payment reference shown with your booking in the portal, then upload your proof of payment there.</p></div>
@@ -593,9 +715,15 @@ ${feeCard('chem', 'chem', 'Chemistry', 'Physical Sciences P2')}
 <section class="sec" aria-labelledby="subjects">
 <div class="sec-head"><p class="eyebrow">Subjects and study time</p><h2 id="subjects">Every Grade 12 topic, by exam paper</h2><p>Estimated study time per topic = notes and worked examples + every exam-style question at exam pace (1,2 minutes per mark) + a <span class="nw">10-minute</span> quiz.</p></div>
 <div class="subjects">
-${subjCard(SUBJECTS.maths, 'Grade 12 Mathematics', 'maths.html', 'Mathematics topics, weighting and study time')}
-${subjCard(SUBJECTS.sci, 'Grade 12 Physical Sciences', 'physical-sciences.html', 'Physical Sciences topics, weighting and study time')}
+${subjCard(SUBJECTS.maths, 'Mathematics topics, weighting and study time')}
+${subjCard(SUBJECTS.sci, 'Physical Sciences topics, weighting and study time')}
+${subjCard(SUBJECTS.life, 'Life Sciences topics, weighting and study time')}
 </div>
+</section>
+
+<section class="sec" id="grades" aria-labelledby="grades-h">
+<div class="sec-head"><p class="eyebrow">Grades 10 and 11</p><h2 id="grades-h">Building up to matric? Grade 10 and 11 lessons too</h2><p>The same online lessons for Grade 10 and 11 Mathematics, Physical Sciences and Life Sciences${anyLower ? ', with notes, worked examples and exam-style questions for each topic' : ' – notes and exam-style questions are being added'}. Grade 10 and 11 exams are set by your school or province and are written in June and November.</p></div>
+<div class="subjects">${g1011.map(gradeCard).join('\n')}</div>
 </section>
 
 <section class="sec" aria-labelledby="popular">
@@ -615,8 +743,8 @@ ${subjCard(SUBJECTS.sci, 'Grade 12 Physical Sciences', 'physical-sciences.html',
 </section>
 
 <section class="sec band" aria-labelledby="cta">
-<h2 id="cta">Get help with the topics that worry you – before the NSC finals</h2>
-<p>${firstExam.name} is written on ${firstExam.wdl} ${firstExam.dm} ${firstExam.date.slice(0, 4)}. Create a free account, request a lesson time and pick your topics. You only pay once the tutor confirms.</p>
+<h2 id="cta">Get help with the topics that worry you – before your exams</h2>
+<p>The NSC papers listed here run until ${lastExam.wdl} ${lastExam.dm} ${lastExam.date.slice(0, 4)} (${lastExam.name}); Grade 10 and 11 learners write their November exams at school. Create a free account, request a lesson time and pick your topics. You only pay once the tutor confirms.</p>
 <div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="${PORTAL}">Sign in to the portal</a></div>
 </section>
 </main>
@@ -626,15 +754,15 @@ ${liveJs('')}
 </body>
 </html>
 `;
-  return head({ file: 'index.html', url, title: 'Grade 12 Maths & Physical Sciences Tutor Online | Adventuity', desc, css: CSS_BASE + CSS_SHARED + CSS_INDEX,
+  return head({ file: 'index.html', url, title: 'Grade 12 Maths, Physical & Life Sciences Tutor | Adventuity', desc, css: CSS_BASE + CSS_SHARED + CSS_INDEX,
     ld: [{ '@context': 'https://schema.org', '@graph': [org, website, service] }, faqLd] }) + '\n' + body;
 }
 
-/* ---------- subject pages ---------- */
-function topicRow(t) {
+/* ---------- subject pages (Grade 12) and grade pages (Grades 10–11) ---------- */
+function topicRow(t, h = 'h3') {
   const href = 'topics/' + t.id + '.html';
   return `<article class="topic" id="${esc(t.id)}">
-<div class="t-row"><div class="t-main"><h3 class="t-title"><a href="${href}">${esc(t.title)}</a></h3><span class="t-weight">${esc(t.weight)}</span></div><div class="t-nums"><span class="t-n"><span class="lbl">Sections </span><b>${t.sections.length}</b></span><span class="t-n"><span class="lbl">Exam questions </span><b>${t.nQ}</b> <span class="muted">(${t.marks}${NB}marks)</span></span><span class="t-n"><span class="lbl">Study time </span><b>≈${NB}${dur(t.total)}</b><span class="t-split"><span class="nw">notes ${durShort(t.notes)} ·</span> <span class="nw">exam questions ${durShort(t.exam)}</span></span></span></div></div>
+<div class="t-row"><div class="t-main"><${h} class="t-title"><a href="${href}">${esc(t.title)}</a></${h}><span class="t-weight">${esc(t.weight)}</span></div><div class="t-nums"><span class="t-n"><span class="lbl">Sections </span><b>${t.sections.length}</b></span><span class="t-n"><span class="lbl">Exam questions </span><b>${t.nQ}</b> <span class="muted">(${t.marks}${NB}marks)</span></span><span class="t-n"><span class="lbl">Study time </span><b>≈${NB}${dur(t.total)}</b><span class="t-split"><span class="nw">notes ${durShort(t.notes)} ·</span> <span class="nw">exam questions ${durShort(t.exam)}</span></span></span></div></div>
 <details class="t-more"><summary><span>Show the ${t.sections.length} sections</span>${svg(IC.chev, 'chev')}</summary>
 <div class="t-body"><ol class="sec-list">${t.sections.map((s) => `<li><span>${esc(s.title)}</span><span class="mono">${s.est}${NB}min</span></li>`).join('')}</ol>
 <p class="split">Notes and worked examples ${dur(t.notes)} · ${t.nQ} exam-style questions (${t.marks} marks) at exam pace ${dur(t.exam)} · quiz ${QUIZ_MIN}${NB}min</p>
@@ -642,89 +770,175 @@ function topicRow(t) {
 </details>
 </article>`;
 }
+const TT_HEAD = '<div class="tt-head" aria-hidden="true"><span>Topic and exam weighting</span><span>Sections</span><span>Exam questions</span><span>Study time</span></div>';
+const paperTotal = (p) => `<p class="paper-total"><span>${p.label} total</span><span class="mono">${pl(p.topics.length, 'topic')} · ${pl(p.nSec, 'section')} · ${pl(p.nQ, 'question')} · ≈${NB}${dur(p.total)}</span></p>`;
+const capFirst = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+const provider = () => ({ '@type': 'EducationalOrganization', name: BRAND, legalName: LEGAL, url: BASE, logo: BASE + 'icons/icon-512.png' });
+const hourOffer = (k) => [{ '@type': 'Offer', category: 'Paid', price: FEES[k], priceCurrency: 'ZAR', url: BASE + SIGNUP,
+  priceSpecification: { '@type': 'UnitPriceSpecification', price: FEES[k], priceCurrency: 'ZAR', unitText: 'per hour', unitCode: 'HUR' } }];
+const courseInstance = (min) => [Object.assign({ '@type': 'CourseInstance', courseMode: 'online', inLanguage: 'en-ZA', location: { '@type': 'VirtualLocation', url: BASE + PORTAL } }, min ? { courseWorkload: iso(min) } : {})];
+const FEE_FOR = { maths: ' for Maths', phys: ' for Physics', chem: ' for Chemistry', life: ' for Life Sciences' };
+const feeLine = (keys) => keys.map((k) => `<span data-fee="${k}">${rand(FEES[k])}</span> per hour${keys.length > 1 ? FEE_FOR[k] || '' : ''}`).join(', ');
+const estSec = (pace) => `<section class="sec card how" aria-labelledby="est">
+<h2 id="est">How the study time is estimated</h2>
+<ul>
+<li><b>Notes and worked examples:</b> the estimate for each section, listed when you open a topic.</li>
+<li><b>Exam-style questions:</b> every question in the topic's practice bank ${pace}</li>
+<li><b>Quiz:</b> 10 minutes per topic.</li>
+</ul>
+<p class="small muted">It is a guide for planning. Your tutor will help you adjust it to what you already know. Notes, examples, questions and memos open in the portal once the tutor approves your account.</p>
+</section>`;
+const PACE_NSC = 'at exam pace – 1,2 minutes per mark, the pace of 150 marks in 3 hours.';
+const PACE_LIFE = 'at 1,2 minutes per mark. The Life Sciences papers allow 1 minute per mark (150 marks in 2½ hours) – the extra time is for checking your answers against the memo.';
+const PACE_GRADES = 'at 1,2 minutes per mark – the pace of a 150-mark paper in 3 hours (Life Sciences papers allow a little less, so the extra time is for checking your answers against the memo).';
+
+const SUBJ_PAGE = {
+  maths: { title: 'Grade 12 Maths Topics & Study Time (CAPS) | Adventuity', book: 'Maths', cta: 'Maths',
+    desc: 'All Grade 12 Mathematics (CAPS) topics for NSC Paper 1 and Paper 2, with exam weighting, sections, exam-style questions and study time per topic.',
+    lead: (s) => `All ${s.nTopics} topics of matric Mathematics, grouped by NSC exam paper, with the typical mark weighting, the study sections in each topic, the number of exam-style questions and how long each topic takes to study.` },
+  sci: { title: 'Grade 12 Physical Sciences Topics & Study Time | Adventuity', book: 'Physical Sciences', cta: 'Physics or Chemistry',
+    desc: 'Grade 12 Physical Sciences (CAPS) topics for Physics Paper 1 and Chemistry Paper 2: exam weighting, sections, exam-style questions and study hours.',
+    lead: (s) => `All ${s.nTopics} topics of matric Physical Sciences – Physics for Paper 1 and Chemistry for Paper 2 – with the typical mark weighting, the study sections in each topic, the number of exam-style questions and how long each topic takes to study.` },
+  life: { title: 'Grade 12 Life Sciences Topics & Study Time | Adventuity', book: 'Life Sciences', cta: 'Life Sciences',
+    desc: 'Grade 12 Life Sciences (CAPS) topics for NSC Paper 1 and Paper 2, with exam weighting, sections, exam-style questions and study time per topic.',
+    lead: (s) => (s.nTopics
+      ? `The ${s.nTopics} matric Life Sciences topics in the portal, grouped by NSC exam paper, with the typical mark weighting, the study sections in each topic, the number of exam-style questions and how long each topic takes to study.`
+      : 'The matric Life Sciences notes and exam-style questions are being added to the portal. Here are the 2026 NSC exam dates for both papers; the topic lists, with weighting and study time, appear as the notes are published.') },
+};
 
 function buildSubject(key) {
   const s = SUBJECTS[key];
+  const T = SUBJ_PAGE[key];
   const url = BASE + s.file;
-  const isM = key === 'maths';
-  const h1 = isM ? 'Grade 12 Mathematics (CAPS) – topics, exam weighting and study time' : 'Grade 12 Physical Sciences (CAPS) – topics, exam weighting and study time';
-  const title = isM ? 'Grade 12 Maths Topics & Study Time (CAPS) | Adventuity' : 'Grade 12 Physical Sciences Topics & Study Time | Adventuity';
-  const desc = isM
-    ? 'All Grade 12 Mathematics (CAPS) topics for NSC Paper 1 and Paper 2, with exam weighting, sections, exam-style questions and study time per topic.'
-    : 'Grade 12 Physical Sciences (CAPS) topics for Physics Paper 1 and Chemistry Paper 2: exam weighting, sections, exam-style questions and study hours.';
-  const lead = isM
-    ? `All ${s.nTopics} topics of matric Mathematics, grouped by NSC exam paper, with the typical mark weighting, the study sections in each topic, the number of exam-style questions and how long each topic takes to study.`
-    : `All ${s.nTopics} topics of matric Physical Sciences – Physics for Paper 1 and Chemistry for Paper 2 – with the typical mark weighting, the study sections in each topic, the number of exam-style questions and how long each topic takes to study.`;
-  const other = isM ? { file: 'physical-sciences.html', text: 'Grade 12 Physical Sciences topics and study time' } : { file: 'maths.html', text: 'Grade 12 Mathematics topics and study time' };
-  const feeKeys = isM ? ['maths'] : ['phys', 'chem'];
+  const h1 = `Grade 12 ${s.name} (CAPS) – topics, exam weighting and study time`;
+  const lead = T.lead(s);
+  const others = SUBJ_ORDER.filter((k) => k !== key).map((k) => SUBJECTS[k]);
 
-  const course = {
+  const course = Object.assign({
     '@context': 'https://schema.org', '@type': 'Course', '@id': url + '#course',
-    name: isM ? 'Grade 12 Mathematics (CAPS)' : 'Grade 12 Physical Sciences (CAPS)',
-    description: lead, url,
-    provider: { '@type': 'EducationalOrganization', name: BRAND, legalName: LEGAL, url: BASE, logo: BASE + 'icons/icon-512.png' },
-    educationalLevel: 'Grade 12', inLanguage: 'en-ZA',
-    teaches: s.papers.flatMap((p) => p.topics.map((t) => t.title)),
-    hasCourseInstance: [{ '@type': 'CourseInstance', courseMode: 'online', inLanguage: 'en-ZA', courseWorkload: iso(s.total), location: { '@type': 'VirtualLocation', url: BASE + PORTAL } }],
-    offers: [{ '@type': 'Offer', category: 'Paid', price: FEES[feeKeys[0]], priceCurrency: 'ZAR', url: BASE + SIGNUP,
-      priceSpecification: { '@type': 'UnitPriceSpecification', price: FEES[feeKeys[0]], priceCurrency: 'ZAR', unitText: 'per hour', unitCode: 'HUR' } }],
-  };
+    name: `Grade 12 ${s.name} (CAPS)`, description: lead, url, provider: provider(), educationalLevel: 'Grade 12', inLanguage: 'en-ZA' },
+  s.nTopics ? { teaches: s.papers.flatMap((p) => p.topics.map((t) => t.title)) } : {},
+  { hasCourseInstance: courseInstance(s.total), offers: hourOffer(s.fees[0]) });
   const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
     { '@type': 'ListItem', position: 1, name: 'Home', item: BASE },
-    { '@type': 'ListItem', position: 2, name: isM ? 'Grade 12 Mathematics' : 'Grade 12 Physical Sciences', item: url }] };
+    { '@type': 'ListItem', position: 2, name: 'Grade 12 ' + s.name, item: url }] };
 
   const paperSec = (p) => {
     const id = key + '-' + p.key;
-    const heading = isM ? `${p.label}: ${p.theme}` : `${p.label}: ${p.theme}`;
+    const heading = p.theme ? `${p.label}: ${p.theme}` : `${p.label} topics`;
     return `<section class="sec" aria-labelledby="${id}">
-<div class="paper-head"><p class="eyebrow">${isM ? 'Mathematics' : 'Physical Sciences'} · ${p.label}</p><h2 id="${id}">${esc(heading[0].toUpperCase() + heading.slice(1))}</h2>
-<div class="meta"><span class="pill ${p.cls}">${p.exam.full} · 09:00</span><span class="pill">3 hours · 150 marks</span><span class="pill">${p.topics.length} topics · ≈${NB}${dur(p.total)}</span></div></div>
-<div class="tt-head" aria-hidden="true"><span>Topic and exam weighting</span><span>Sections</span><span>Exam questions</span><span>Study time</span></div>
-${p.topics.map(topicRow).join('\n')}
-<p class="paper-total"><span>${p.label} total</span><span class="mono">${p.topics.length} topics · ${p.nSec} sections · ${p.nQ} questions · ≈${NB}${dur(p.total)}</span></p>
+<div class="paper-head"><p class="eyebrow">${s.name} · ${p.label}</p><h2 id="${id}">${esc(capFirst(heading))}</h2>
+<div class="meta"><span class="pill ${p.cls}">${p.exam.full} · 09:00</span><span class="pill">${p.exam.len} · 150 marks</span>${p.topics.length ? `<span class="pill">${pl(p.topics.length, 'topic')} · ≈${NB}${dur(p.total)}</span>` : ''}</div></div>
+${p.topics.length ? `${TT_HEAD}
+${p.topics.map((t) => topicRow(t)).join('\n')}
+${paperTotal(p)}` : `<p class="card soon"><b>${s.name} ${p.label} topics are coming soon.</b> The notes and exam-style questions are being written – you can already book a lesson on any ${p.label} topic.</p>`}
 </section>`;
   };
 
   const body = `<body>
 ${topbar({ current: key })}
 <main id="main" class="wrap page">
-<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="./">Home</a></li><li><span aria-current="page">${isM ? 'Grade 12 Mathematics' : 'Grade 12 Physical Sciences'}</span></li></ol></nav>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="./">Home</a></li><li><span aria-current="page">Grade 12 ${s.name}</span></li></ol></nav>
 <section class="hero" aria-labelledby="h1">
 <p class="eyebrow">Grade 12 · CAPS · NSC 2026</p>
 <h1 id="h1" style="margin-top:10px">${esc(h1)}</h1>
 <p class="lead">${esc(lead)}</p>
-<dl class="stats">
+${s.nTopics ? `<dl class="stats">
 <div><dt>Topics</dt><dd>${s.nTopics}</dd></div>
 <div><dt>Study sections</dt><dd>${s.nSec}</dd></div>
 <div><dt>Exam-style questions</dt><dd>${s.nQ}</dd></div>
 <div><dt>Total study time</dt><dd>≈${NB}${dur(s.total)}</dd></div>
-</dl>
-<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a ${isM ? 'Maths' : 'Physical Sciences'} lesson</a><a class="btn lg" href="${PORTAL}">Sign in</a></div>
-<p class="small" style="margin-top:14px">Open a topic for what it covers, how it is examined and a daily study target. <a href="${TT_FILE}">See the matric exam timetable 2026</a>.</p>
+</dl>` : ''}
+<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a ${T.book} lesson</a><a class="btn lg" href="${PORTAL}">Sign in</a></div>
+<p class="small" style="margin-top:14px">${s.nTopics ? 'Open a topic for what it covers, how it is examined and a daily study target. ' : ''}<a href="${TT_FILE}">See the matric exam timetable 2026</a>. In Grade 10 or 11? See the <a href="${GRADES[10].file}#${key}">Grade 10</a> and <a href="${GRADES[11].file}#${key}">Grade 11</a> ${s.name} topics.</p>
 </section>
 ${s.papers.map(paperSec).join('\n')}
-<section class="sec card how" aria-labelledby="est">
-<h2 id="est">How the study time is estimated</h2>
-<ul>
-<li><b>Notes and worked examples:</b> the estimate for each section, listed when you open a topic.</li>
-<li><b>Exam-style questions:</b> every question in the topic's practice bank at exam pace – 1,2 minutes per mark, the pace of 150 marks in 3 hours.</li>
-<li><b>Quiz:</b> 10 minutes per topic.</li>
-</ul>
-<p class="small muted">It is a guide for planning. Your tutor will help you adjust it to what you already know. Notes, examples, questions and memos open in the portal once the tutor approves your account.</p>
-</section>
+${estSec(key === 'life' ? PACE_LIFE : PACE_NSC)}
 <section class="sec band" aria-labelledby="cta">
-<h2 id="cta">Stuck on a topic? Book a one-on-one ${isM ? 'Maths' : 'Physics or Chemistry'} lesson.</h2>
-<p>${feeKeys.map((k) => `<span data-fee="${k}">${rand(FEES[k])}</span> per hour${isM ? '' : k === 'phys' ? ' for Physics' : ' for Chemistry'}`).join(', ')} – 60, 90 or 120 minutes, online from anywhere in South Africa. You pay by EFT only after the tutor confirms your booking.</p>
+<h2 id="cta">Stuck on a topic? Book a one-on-one ${T.cta} lesson.</h2>
+<p>${feeLine(s.fees)} – 60, 90 or 120 minutes, online from anywhere in South Africa. You pay by EFT only after the tutor confirms your booking.</p>
 <div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="./#fees">See all fees</a></div>
 </section>
-<section class="sec other"><p>Also preparing for the other subject?</p><a class="btn long" href="${other.file}">${other.text} ${svg(IC.arrow)}</a></section>
+<section class="sec other"><p>Also preparing for another subject?</p><div class="cta-row" style="margin-top:0">${others.map((o) => `<a class="btn long" href="${o.file}">Grade 12 ${o.name} topics ${svg(IC.arrow)}</a>`).join('')}</div></section>
 </main>
 ${footer({ current: key, live: true })}
 ${liveJs('')}
 </body>
 </html>
 `;
-  return head({ file: s.file, url, title, desc, css: CSS_BASE + CSS_SUBJECT, ld: [course, crumbs] }) + '\n' + body;
+  return head({ file: s.file, url, title: T.title, desc: T.desc, css: CSS_BASE + CSS_SHARED + CSS_SUBJECT, ld: [course, crumbs] }) + '\n' + body;
+}
+
+function buildGrade(gr) {
+  const g = GRADES[gr];
+  const url = BASE + g.file;
+  const other = GRADES[gr === 10 ? 11 : 10];
+  const title = `Grade ${gr} Maths, Physical & Life Sciences Topics | Adventuity`;
+  const desc = `Grade ${gr} Mathematics, Physical Sciences and Life Sciences (CAPS) topics by exam paper, with sections, exam-style questions and study time. Online tutors.`;
+  const h1 = `Grade ${gr} Mathematics, Physical Sciences and Life Sciences – topics and study time`;
+  const lead = g.nTopics
+    ? `The Grade ${gr} topics in the Adventuity portal, grouped by subject and exam paper, with the study sections in each topic, the number of exam-style questions and how long each topic takes to study.`
+    : `Grade ${gr} notes and exam-style questions are being added to the Adventuity portal. You can already book online lessons for Grade ${gr} Mathematics, Physical Sciences and Life Sciences.`;
+
+  const courses = g.list.filter((s) => s.nTopics).map((s) => ({
+    '@type': 'Course', '@id': url + '#' + s.key + '-course', name: `Grade ${gr} ${s.name} (CAPS)`,
+    description: `Grade ${gr} ${s.name} topics by exam paper, with study sections, exam-style questions, study time and live online lessons.`,
+    url: url + '#' + s.key, provider: provider(), educationalLevel: 'Grade ' + gr, inLanguage: 'en-ZA',
+    teaches: s.papers.flatMap((p) => p.topics.map((t) => t.title)), hasCourseInstance: courseInstance(s.total), offers: hourOffer(s.fees[0]) }));
+  const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: BASE },
+    { '@type': 'ListItem', position: 2, name: 'Grade ' + gr, item: url }] };
+
+  const subjSec = (s) => {
+    const id = s.key;
+    const papers = s.nTopics ? s.papers.map((p) => `<div class="paper-sub">
+<h3 class="ph" id="${id}-${p.key}"><span class="dot ${p.cls}"></span>${p.label}${p.sub ? ` <span class="muted">· ${p.sub}</span>` : ''}</h3>
+${p.topics.length ? `${TT_HEAD}
+${p.topics.map((t) => topicRow(t, 'h4')).join('\n')}
+${paperTotal(p)}` : `<p class="card soon"><b>Grade ${gr} ${s.name} ${p.label} topics are coming soon.</b> You can already book a lesson on them.</p>`}
+</div>`).join('\n')
+      : `<p class="card soon"><b>Grade ${gr} ${s.name} topics are coming soon.</b> The notes and exam-style questions are being written – you can already book a Grade ${gr} ${s.name} lesson.</p>`;
+    return `<section class="sec" id="${id}" aria-labelledby="${id}-h">
+<div class="paper-head"><p class="eyebrow">Grade ${gr} · ${s.name}</p><h2 id="${id}-h">Grade ${gr} ${s.name}</h2>
+${s.nTopics ? `<div class="meta">${s.papers.map((p) => `<span class="pill ${p.cls}">${p.sub || p.label}: ${p.topics.length} ${p.topics.length === 1 ? 'topic' : 'topics'}</span>`).join('')}<span class="pill">≈${NB}${dur(s.total)} of study</span></div>` : ''}</div>
+${papers}
+</section>`;
+  };
+
+  const body = `<body>
+${topbar({ current: 'grades' })}
+<main id="main" class="wrap page">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="./">Home</a></li><li><span aria-current="page">Grade ${gr}</span></li></ol></nav>
+<nav class="gswitch" aria-label="Grades">${[10, 11].map((x) => `<a href="${GRADES[x].file}"${x === gr ? ' aria-current="page"' : ''}>Grade ${x}</a>`).join('')}<a href="./#subjects">Grade 12 (matric)</a></nav>
+<section class="hero" aria-labelledby="h1">
+<p class="eyebrow">Grade ${gr} · CAPS · School and provincial exams</p>
+<h1 id="h1" style="margin-top:10px">${esc(h1)}</h1>
+<p class="lead">${esc(lead)}</p>
+${g.nTopics ? `<dl class="stats">
+<div><dt>Topics</dt><dd>${g.nTopics}</dd></div>
+<div><dt>Study sections</dt><dd>${g.nSec}</dd></div>
+<div><dt>Exam-style questions</dt><dd>${g.nQ}</dd></div>
+<div><dt>Total study time</dt><dd>≈${NB}${dur(g.total)}</dd></div>
+</dl>` : ''}
+<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a Grade ${gr} lesson</a><a class="btn lg" href="${PORTAL}">Sign in</a></div>
+<ul class="jump" aria-label="Subjects on this page">${g.list.map((s) => `<li><a href="#${s.key}"><span class="dot ${s.cls}"></span>${s.name} <span class="mono">${s.nTopics ? s.nTopics + (s.nTopics === 1 ? ' topic' : ' topics') : 'soon'}</span></a></li>`).join('')}</ul>
+<div class="note">${svg(IC.cal)}<p><b>Your exams are set by your school or province.</b> Grade ${gr} learners write June and November exams${gr === 11 ? ' – the November papers are often common provincial papers' : ''}. There is no national Grade ${gr} timetable: your school gives you the dates and says which topics each paper covers.</p></div>
+</section>
+${g.list.map(subjSec).join('\n')}
+${estSec(PACE_GRADES)}
+<section class="sec band" aria-labelledby="cta">
+<h2 id="cta">Stuck on a Grade ${gr} topic? Book a one-on-one lesson.</h2>
+<p>From <span data-fee-from>${rand(minFee())}</span> per hour – 60, 90 or 120 minutes, online from anywhere in South Africa. You pay by EFT only after the tutor confirms your booking.</p>
+<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="./#fees">See all fees</a></div>
+</section>
+<section class="sec other"><p>Looking for another grade?</p><div class="cta-row" style="margin-top:0"><a class="btn long" href="${other.file}">${other.name} topics ${svg(IC.arrow)}</a><a class="btn long" href="./#subjects">Grade 12 (matric) subjects ${svg(IC.arrow)}</a></div></section>
+</main>
+${footer({ current: 'grades', live: true })}
+${liveJs('')}
+</body>
+</html>
+`;
+  return head({ file: g.file, url, title, desc, css: CSS_BASE + CSS_SHARED + CSS_SUBJECT + CSS_GRADE, ld: [crumbs].concat(courses.length ? [{ '@context': 'https://schema.org', '@graph': courses }] : []) }) + '\n' + body;
 }
 
 /* ---------- topic pages ---------- */
@@ -790,34 +1004,74 @@ const INFO = {
   stoich: { s: 'Stoichiometry', full: 'It does not get its own question: in a typical paper its calculations sit inside Questions 5–9 of Physical Sciences Paper 2 (Chemistry).',
     d: 'Stoichiometry has no question of its own, but you need it for the calculations in the rate, equilibrium, acid-base and electrochemistry work. This revision topic sharpens the mole calculations those questions depend on: moles from mass, gas volume and concentration, limiting reagents, percentage yield and purity, and empirical formulae, so that the calculation steps in the rest of Paper 2 go smoothly.' },
 };
-const CTX = {}; // topic id -> { key, s, p }
-for (const [key, s] of Object.entries(SUBJECTS)) for (const p of s.papers) for (const t of p.topics) CTX[t.id] = { key, s, p };
-for (const t of ALL) {
-  const i = INFO[t.id];
-  if (!i) throw new Error('No public description for topic ' + t.id + ' – add one to INFO');
+const CTX = {}; // topic id -> { gr, key, s (subject in that grade), p (paper), g (grade page, Grades 10–11), list (file listing the topic) }
+for (const s of Object.values(SUBJECTS)) for (const p of s.papers) for (const t of p.topics) CTX[t.id] = { gr: 12, key: s.key, s, p, g: null, list: s.file };
+for (const g of Object.values(GRADES)) for (const s of g.list) for (const p of s.papers) for (const t of p.topics) CTX[t.id] = { gr: g.gr, key: s.key, s, p, g, list: g.file + '#' + s.key };
+const PAGES = TOPICS.filter((t) => CTX[t.id]);   // every topic gets a page
+for (const t of ALL) if (!INFO[t.id]) console.warn('note: no hand-written description for Grade 12 topic ' + t.id + ' (missing gr?) – using the generated one; add it to INFO');
+for (const t of PAGES) {
+  const i = INFO[t.id]; if (!i) continue;   // INFO is required for the Grade 12 Maths / Physical Sciences topics, optional for the others
   const n = i.d.split(/(?<=[.!?])\s+/).length; if (n < 2 || n > 4) throw new Error('INFO.' + t.id + ': description must be 2–4 sentences (has ' + n + ')');
 }
-const SUBJ_NAME = { maths: 'Grade 12 Mathematics', sci: 'Grade 12 Physical Sciences' };
-const feeKey = (t) => (CTX[t.id].key === 'maths' ? 'maths' : CTX[t.id].p.key === 'p1' ? 'phys' : 'chem');
-const plainDur = (min) => dur(min).replace(/ /g, ' ');
+// public description of a topic: hand-written in INFO, otherwise built from public fields only (title, grade, subject, paper, section titles)
+function topicInfo(t) {
+  if (INFO[t.id]) return INFO[t.id];
+  const c = CTX[t.id], secs = t.sections.map((x) => x.title.replace(/[.;:]+$/, ''));
+  const where = c.gr === 12 ? `${c.p.exam.name} of the NSC exams` : `${c.s.name} ${c.p.label}${c.p.sub ? ' (' + c.p.sub + ')' : ''} of the Grade ${c.gr} school and provincial exams`;
+  return { s: t.title, auto: true,
+    d: `${t.title} is a Grade ${c.gr} ${c.s.name} topic in the CAPS curriculum, examined in ${where}. You study it in ${secs.length} ${secs.length === 1 ? 'section' : 'sections'}: ${secs.join('; ')}.` };
+}
+const feeKey = (t) => t.subj;   // maths | phys | chem | life
+const plainDur = (min) => dur(min).replace(/\u00a0/g, ' ');
 function examinedIn(t) {
   const i = INFO[t.id], e = CTX[t.id].p.exam;
+  if (!i || !e) return '';
   if (i.full) return i.full;
   return `In a typical paper you will find it in ${i.q} of ${e.name}${i.mcq ? ', with multiple-choice items in Question 1 as well' : ''}.` + (i.extra ? ' ' + i.extra : '');
 }
 function firstFit(list, max, what) { const v = list.find((x) => x.length <= max); if (!v) throw new Error(what + ': no variant fits ' + max + ' chars: ' + list[list.length - 1]); return v; }
+// for topics without hand-written INFO: the first variant that fits and is not used by another page; a long title is shortened as a last resort
+const USED = { title: new Set(), desc: new Set() };
+function pickUnique(kind, list, max, short) {
+  let v = list.find((x) => x.length <= max && !USED[kind].has(x));
+  for (let n = max; !v && n > 20; n -= 5) { const x = short(n); if (x.length <= max && !USED[kind].has(x)) v = x; }
+  if (!v) throw new Error('no unique ' + kind + ' fits: ' + list[0]);
+  USED[kind].add(v); return v;
+}
+const clip = (x, n) => (x.length <= n ? x : x.slice(0, Math.max(1, n - 1)).replace(/[\s,;:–-]+\S*$/, '').replace(/(\s+(and|the|of|in|on|for|to|a|an|with|from|by))+$/i, '').replace(/[\s,;:–-]+$/, '') + '…');
 function topicTitle(t) {
-  const S = INFO[t.id].s, P = CTX[t.id].p.exam.short;
-  return firstFit([`Grade 12 ${S} – ${P} revision & online tutor | Adventuity`, `Grade 12 ${S} – ${P} revision & tutor | Adventuity`, `Grade 12 ${S}: ${P} revision & tutor | Adventuity`,
-    `Grade 12 ${S} – ${P} revision | Adventuity`, `Grade 12 ${S}: ${P} revision | Adventuity`, `Grade 12 ${S} revision & tutor | Adventuity`,
-    `Grade 12 ${S} revision | Adventuity`, `${S}: ${P} revision | Adventuity`], 60, t.id + ' title');
+  const c = CTX[t.id], B = ' | Adventuity';
+  if (INFO[t.id] && c.gr === 12) {
+    const S = INFO[t.id].s, P = c.p.exam.short;
+    return firstFit([`Grade 12 ${S} – ${P} revision & online tutor${B}`, `Grade 12 ${S} – ${P} revision & tutor${B}`, `Grade 12 ${S}: ${P} revision & tutor${B}`,
+      `Grade 12 ${S} – ${P} revision${B}`, `Grade 12 ${S}: ${P} revision${B}`, `Grade 12 ${S} revision & tutor${B}`,
+      `Grade 12 ${S} revision${B}`, `${S}: ${P} revision${B}`], 60, t.id + ' title');
+  }
+  const S = topicInfo(t).s, P = c.p.short, gr = c.gr;
+  const forms = (x) => (gr === 12
+    ? [`Grade 12 ${x} – ${P} revision & tutor${B}`, `Grade 12 ${x} – ${P} revision${B}`, `Grade 12 ${x} – ${c.s.short} revision${B}`, `Grade 12 ${x} revision${B}`, `Gr 12 ${x} – ${P}${B}`, `Gr 12 ${x}${B}`]
+    : [`Grade ${gr} ${x} (${P}) – online tutor${B}`, `Grade ${gr} ${x} – ${P} online tutor${B}`, `Grade ${gr} ${x} – ${P}${B}`, `Grade ${gr} ${x} – ${c.s.short}${B}`, `Grade ${gr} ${x}${B}`, `Gr ${gr} ${x}${B}`]);
+  // a long title "Topic: what it includes" can go by the part before the colon, if no other topic of that grade and subject starts the same
+  const lead = (x) => x.split(':')[0].trim();
+  const H = lead(S), sameHead = c.s.papers.some((pp) => pp.topics.some((o) => o !== t && lead(topicInfo(o).s) === H));
+  const list = forms(S).concat(H !== S && H.length >= 4 && !sameHead ? forms(H) : []);
+  return pickUnique('title', list, 60, (n) => `Gr ${gr} ${clip(S, n - 21 - P.length)} – ${P}${B}`);
 }
 function topicDesc(t) {
-  const S = INFO[t.id].s, P = CTX[t.id].p.exam.short, n = t.sections.length, h = plainDur(t.total);
-  return firstFit([`Matric ${S} (${P}): what it covers, typical marks and question numbers, ${n} study sections and about ${h} of study. Book an online tutor.`,
-    `Matric ${S} (${P}): what it covers, marks and question numbers, ${n} sections and about ${h} of study. Book an online tutor.`,
-    `Matric ${S} (${P}): what it covers, how it is examined, ${n} sections and about ${h} of study. Online lessons.`,
-    `Matric ${S} (${P}): what it covers, how it is examined and about ${h} of study.`], 155, t.id + ' description');
+  const c = CTX[t.id], n = t.sections.length, h = plainDur(t.total);
+  if (INFO[t.id] && c.gr === 12) {
+    const S = INFO[t.id].s, P = c.p.exam.short;
+    return firstFit([`Matric ${S} (${P}): what it covers, typical marks and question numbers, ${n} study sections and about ${h} of study. Book an online tutor.`,
+      `Matric ${S} (${P}): what it covers, marks and question numbers, ${n} sections and about ${h} of study. Book an online tutor.`,
+      `Matric ${S} (${P}): what it covers, how it is examined, ${n} sections and about ${h} of study. Online lessons.`,
+      `Matric ${S} (${P}): what it covers, how it is examined and about ${h} of study.`], 155, t.id + ' description');
+  }
+  const S = topicInfo(t).s, P = c.p.short, gr = c.gr, q = t.nQ ? `, ${t.nQ} exam-style questions` : '';
+  const who = gr === 12 ? 'Matric' : 'Grade ' + gr;
+  return pickUnique('desc', [`${who} ${S} (${P}): what it covers, typical weighting, ${n} study sections${q} and about ${h} of study. Book an online tutor.`,
+    `${who} ${S} (${P}): what it covers, ${n} study sections${q} and about ${h} of study. Book an online tutor.`,
+    `${who} ${S} (${P}): what it covers, ${n} sections and about ${h} of study. Online lessons.`,
+    `${who} ${S} (${P}): what it covers and about ${h} of study.`], 155, (m) => `${who} ${clip(S, m - 60)} (${P}): what it covers and about ${h} of study.`);
 }
 function relatedOf(t) { const list = CTX[t.id].p.topics; const i = list.indexOf(t); const out = []; for (let k = 1; k < list.length && out.length < 4; k++) out.push(list[(i + k) % list.length]); return out; }
 const relCard = (t, pre) => `<li><a href="${pre}${t.id}.html"><b>${esc(t.title)}</b><span class="meta">${t.sections.length} sections · ${t.nQ} exam questions · ≈${NB}${dur(t.total)}</span></a></li>`;
@@ -851,54 +1105,77 @@ const CSS_TOPIC = `
 `;
 
 function buildTopic(t) {
-  const { key, s, p } = CTX[t.id];
-  const i = INFO[t.id];
+  const c = CTX[t.id];
+  const { key, s, p, gr } = c;
+  const nsc = gr === 12;   // Grade 12: NSC paper and date; Grades 10–11: school / provincial exams, no national date
+  const i = topicInfo(t);
   const pre = '../';
   const file = 'topics/' + t.id + '.html';
   const url = BASE + file;
-  const subjUrl = BASE + s.file;
+  const listUrl = BASE + c.list;
+  const listName = `Grade ${gr} ${s.name}`;
   const e = p.exam;
   const fk = feeKey(t);
-  const paperLong = key === 'maths' ? p.label : (p.key === 'p1' ? 'Physics, Paper 1' : 'Chemistry, Paper 2');
-  const h1 = `${t.title} – Grade 12 ${s.name} (${paperLong})`;
+  const paperLong = p.sub ? `${p.sub}, ${p.label}` : p.label;
+  const h1 = `${t.title} – ${listName} (${paperLong})`;
   const title = topicTitle(t), desc = topicDesc(t);
   const examLine = examinedIn(t);
   const rel = relatedOf(t);
-  const FAQ = [
+  const weight = t.weight.replace(/[.\s]+$/, '');
+  const pace = key === 'life' ? '1,2 minutes per mark' : 'exam pace of 1,2 minutes per mark';
+  const studyAns = `<p>About ${dur(t.total)}: ${dur(t.notes)} for the notes and worked examples in its ${t.sections.length} sections, ${t.nQ ? `${dur(t.exam)} for the ${t.nQ} exam-style questions (${t.marks} marks) at ${pace}, ` : ''}and a ${QUIZ_MIN}-minute quiz.</p>`;
+  const lessonAns = `<p>Yes. Create a free account in the Adventuity portal, request a one-on-one online lesson of 60, 90 or 120 minutes (or a seat in a group class) and choose ${esc(i.s)} as your topic. You pay by EFT only after the tutor confirms the booking.</p>`;
+  const FAQ = nsc ? [
     [`How many marks is ${i.s} worth in the matric exam?`,
-      `<p>In ${e.name} (3 hours, 150 marks) the usual weighting is: ${esc(t.weight)}. ${esc(examLine)} The exact marks change a little from year to year.</p>`],
-    [`How long does it take to study ${i.s}?`,
-      `<p>About ${dur(t.total)}: ${dur(t.notes)} for the notes and worked examples in its ${t.sections.length} sections, ${dur(t.exam)} for the ${t.nQ} exam-style questions (${t.marks} marks) at exam pace of 1,2 minutes per mark, and a ${QUIZ_MIN}-minute quiz.</p>`],
+      `<p>In ${e.name} (${e.len}, 150 marks) the usual weighting is: ${esc(weight)}.${examLine ? ' ' + esc(examLine) : ''} The exact marks change a little from year to year.</p>`],
+    [`How long does it take to study ${i.s}?`, studyAns],
     [`When is the ${e.name} exam in 2026?`,
-      `<p>${e.name} is written on ${e.long} at 09:00 and lasts 3 hours (150 marks), according to the DBE’s 2026 NSC timetable. Confirm the date with your school, because the DBE can amend the timetable.</p>`],
-    [`Can I get online lessons for ${i.s}?`,
-      `<p>Yes. Create a free account in the Adventuity portal, request a one-on-one online lesson of 60, 90 or 120 minutes (or a seat in a group class) and choose ${esc(i.s)} as your topic. You pay by EFT only after the tutor confirms the booking.</p>`],
+      `<p>${e.name} is written on ${e.long} at 09:00 and lasts ${e.len} (150 marks), according to the DBE’s 2026 NSC timetable. Confirm the date with your school, because the DBE can amend the timetable.</p>`],
+    [`Can I get online lessons for ${i.s}?`, lessonAns],
+  ] : [
+    [`How is ${i.s} examined in Grade ${gr}?`,
+      `<p>Grade ${gr} learners write ${s.name} exams set by their school or province, in June and November. ${esc(i.s)} is part of ${s.name} ${paperLong}${weight ? `; the usual weighting is: ${esc(weight)}` : ''}. Your school’s exam guideline confirms which topics each exam covers.</p>`],
+    [`How long does it take to study ${i.s}?`, studyAns],
+    [`Can I get online lessons for Grade ${gr} ${i.s}?`, lessonAns],
   ];
   const course = {
     '@context': 'https://schema.org', '@type': 'Course', '@id': url + '#course',
-    name: `${t.title} (Grade 12 ${s.name})`, description: i.d, url,
-    provider: { '@type': 'EducationalOrganization', name: BRAND, legalName: LEGAL, url: BASE, logo: BASE + 'icons/icon-512.png' },
-    educationalLevel: 'Grade 12', inLanguage: 'en-ZA', timeRequired: iso(t.total),
+    name: `${t.title} (${listName})`, description: i.d, url, provider: provider(),
+    educationalLevel: 'Grade ' + gr, inLanguage: 'en-ZA', timeRequired: iso(t.total),
     teaches: t.sections.map((x) => x.title),
-    isPartOf: { '@type': 'Course', '@id': subjUrl + '#course', name: key === 'maths' ? 'Grade 12 Mathematics (CAPS)' : 'Grade 12 Physical Sciences (CAPS)', url: subjUrl },
-    hasCourseInstance: [{ '@type': 'CourseInstance', courseMode: 'online', inLanguage: 'en-ZA', courseWorkload: iso(t.total), location: { '@type': 'VirtualLocation', url: BASE + PORTAL } }],
-    offers: [{ '@type': 'Offer', category: 'Paid', price: FEES[fk], priceCurrency: 'ZAR', url: BASE + SIGNUP,
-      priceSpecification: { '@type': 'UnitPriceSpecification', price: FEES[fk], priceCurrency: 'ZAR', unitText: 'per hour', unitCode: 'HUR' } }],
+    isPartOf: { '@type': 'Course', '@id': nsc ? listUrl + '#course' : BASE + c.g.file + '#' + key + '-course', name: listName + ' (CAPS)', url: listUrl },
+    hasCourseInstance: courseInstance(t.total), offers: hourOffer(fk),
   };
   const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
     { '@type': 'ListItem', position: 1, name: 'Home', item: BASE },
-    { '@type': 'ListItem', position: 2, name: SUBJ_NAME[key], item: subjUrl },
+    { '@type': 'ListItem', position: 2, name: listName, item: listUrl },
     { '@type': 'ListItem', position: 3, name: t.title, item: url }] };
   const faqLd = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: plain(a) } })) };
+
+  const examCard = nsc ? `<dl class="kv">
+<div><dt>Paper</dt><dd>${e.name} – <a href="${pre}${TT_FILE}">${e.long}, 09:00</a> (${e.len}, 150 marks)</dd></div>
+<div><dt>Weighting</dt><dd>${esc(t.weight)}</dd></div>
+${examLine ? `<div><dt>Questions</dt><dd>${esc(examLine)}</dd></div>\n` : ''}</dl>
+<p class="small muted">${examLine ? 'Question numbers and mark splits are typical, not fixed' : 'Mark splits are typical, not fixed'} – they vary a little from year to year.</p>` : `<dl class="kv">
+<div><dt>Paper</dt><dd>${listName} ${paperLong}</dd></div>
+<div><dt>Exams</dt><dd>June and November school or provincial exams – your school sets the papers and the dates</dd></div>
+${weight ? `<div><dt>Weighting</dt><dd>${esc(t.weight)}</dd></div>\n` : ''}</dl>
+<p class="small muted">There is no national Grade ${gr} exam. Your school’s exam guideline says which topics each paper covers.</p>`;
+  const ticks = [
+    t.nQ ? `${t.nQ} exam-style questions on ${esc(i.s)} (${t.marks} marks in total), each with a full marking memo` : '',
+    key === 'life' ? `Worked exam-style answers, point by point, with labelled diagrams for each of the ${t.sections.length} sections` : `Worked examples with diagrams and step-by-step calculations for each of the ${t.sections.length} sections`,
+    'Tutor notes added to sections and questions – for the whole class or just for you',
+    nsc ? `A topic quiz, mock papers and a study plan that counts down to ${e.name}` : `A topic quiz and Grade ${gr} mock papers built from the exam-style questions`,
+  ].filter(Boolean);
 
   const body = `<body>
 ${topbar({ current: 'topic', pre })}
 <main id="main" class="wrap page">
-<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${pre}">Home</a></li><li><a href="${pre}${s.file}">${SUBJ_NAME[key]}</a></li><li><span aria-current="page">${esc(t.title)}</span></li></ol></nav>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${pre}">Home</a></li><li><a href="${pre}${c.list}">${listName}</a></li><li><span aria-current="page">${esc(t.title)}</span></li></ol></nav>
 <section class="hero" aria-labelledby="h1">
-<p class="eyebrow">Grade 12 · ${s.name} · ${esc(paperLong)} · CAPS</p>
+<p class="eyebrow">Grade ${gr} · ${s.name} · ${esc(paperLong)} · CAPS</p>
 <h1 id="h1" style="margin-top:10px">${esc(h1)}</h1>
-<p class="lead">What ${esc(i.s)} covers, how it is examined in ${e.name}, the ${t.sections.length} sections to study and how long it takes – plus live online lessons when you get stuck.</p>
+<p class="lead">What ${esc(i.s)} covers, how it is examined in ${nsc ? e.name : 'Grade ' + gr}, the ${t.sections.length} sections to study and how long it takes – plus live online lessons when you get stuck.</p>
 <dl class="stats">
 <div><dt>Study sections</dt><dd>${t.sections.length}</dd></div>
 <div><dt>Exam-style questions</dt><dd>${t.nQ}</dd></div>
@@ -910,12 +1187,7 @@ ${topbar({ current: 'topic', pre })}
 <div class="two">
 <section class="card covers" aria-labelledby="covers"><h2 id="covers">What it covers</h2><p>${esc(i.d)}</p></section>
 <section class="card" aria-labelledby="exam"><h2 id="exam">How it is examined</h2>
-<dl class="kv">
-<div><dt>Paper</dt><dd>${e.name} – <a href="${pre}${TT_FILE}">${e.long}, 09:00</a> (3 hours, 150 marks)</dd></div>
-<div><dt>Weighting</dt><dd>${esc(t.weight)}</dd></div>
-<div><dt>Questions</dt><dd>${esc(examLine)}</dd></div>
-</dl>
-<p class="small muted">Question numbers and mark splits are typical, not fixed – they vary a little from year to year.</p></section>
+${examCard}</section>
 </div>
 <div class="two">
 <section class="card" aria-labelledby="sections"><h2 id="sections">Sections to study</h2>
@@ -923,18 +1195,15 @@ ${topbar({ current: 'topic', pre })}
 <section class="card" aria-labelledby="time"><h2 id="time">Study time</h2>
 <table class="st"><tbody>
 <tr><th scope="row">Notes and worked examples<small>${t.sections.length} sections</small></th><td>${dur(t.notes)}</td></tr>
-<tr><th scope="row">Exam-style questions<small>${t.nQ} questions · ${t.marks} marks × 1,2${NB}min per mark</small></th><td>${dur(t.exam)}</td></tr>
-<tr><th scope="row">Topic quiz</th><td>${QUIZ_MIN}${NB}min</td></tr>
+${t.nQ ? `<tr><th scope="row">Exam-style questions<small>${t.nQ} questions · ${t.marks} marks × 1,2${NB}min per mark</small></th><td>${dur(t.exam)}</td></tr>\n` : ''}<tr><th scope="row">Topic quiz</th><td>${QUIZ_MIN}${NB}min</td></tr>
 <tr class="tot"><th scope="row">Total</th><td>≈${NB}${dur(t.total)}</td></tr>
 </tbody></table>
-<p class="daily" data-at="${e.at}" data-min="${t.total}" data-paper="${esc(e.name)}" data-date="${e.long}">${e.name} is written on ${e.long} at 09:00.</p></section>
+${nsc ? `<p class="daily" data-at="${e.at}" data-min="${t.total}" data-paper="${esc(e.name)}" data-date="${e.long}">${e.name} is written on ${e.long} at 09:00.</p>`
+    : `<p class="daily">Grade ${gr} exams are set by your school or province – plan back from the date your school gives you.</p>`}</section>
 </div>
 <section class="sec card portal-card" aria-labelledby="portal"><h2 id="portal">What you get in the portal</h2>
 <ul class="ticks">
-<li>${svg(CHECK)}<span>${t.nQ} exam-style questions on ${esc(i.s)} (${t.marks} marks in total), each with a full marking memo</span></li>
-<li>${svg(CHECK)}<span>Worked examples with diagrams and step-by-step calculations for each of the ${t.sections.length} sections</span></li>
-<li>${svg(CHECK)}<span>Tutor notes added to sections and questions – for the whole class or just for you</span></li>
-<li>${svg(CHECK)}<span>A topic quiz, mock papers and a study plan that counts down to ${e.name}</span></li>
+${ticks.map((x) => `<li>${svg(CHECK)}<span>${x}</span></li>`).join('\n')}
 </ul>
 <div class="note">${svg(IC.lock)}<p>Notes, worked examples, questions and memos open once the tutor approves your account – usually with your first confirmed lesson.</p></div>
 </section>
@@ -943,15 +1212,13 @@ ${topbar({ current: 'topic', pre })}
 <p><span data-fee="${fk}">${rand(FEES[fk])}</span> per hour – 60, 90 or 120 minutes, online from anywhere in South Africa. Pick ${esc(i.s)} as your topic; you pay by EFT only after the tutor confirms.</p>
 <div class="cta-row"><a class="btn primary lg long" href="${pre}${SIGNUP}">Book a lesson on ${esc(i.s)}</a><a class="btn lg" href="${pre}${PORTAL}">Sign in</a></div>
 </section>
-<section class="sec" aria-labelledby="related"><h2 id="related">Related ${e.short} topics</h2>
-<ul class="rel">${rel.map((r) => relCard(r, '')).join('')}</ul>
-<p style="margin-top:14px"><a href="${pre}${s.file}">All ${SUBJ_NAME[key]} topics, weighting and study time</a></p></section>
+<section class="sec" aria-labelledby="related"><h2 id="related">${rel.length ? `Related ${nsc ? e.short : 'Grade ' + gr + ' ' + p.short} topics` : `More ${listName} topics`}</h2>
+${rel.length ? `<ul class="rel">${rel.map((r) => relCard(r, '')).join('')}</ul>\n` : ''}<p style="margin-top:14px"><a href="${pre}${c.list}">All ${listName} topics, ${nsc ? 'weighting and study time' : 'with study time'}</a></p></section>
 <section class="sec" aria-labelledby="faq-h"><h2 id="faq-h">Questions about ${esc(i.s)}</h2>
 <div class="faq">${FAQ.map(([q, a]) => `<details><summary><h3>${esc(q)}</h3>${svg(IC.chev, 'chev')}</summary><div class="ans">${a}</div></details>`).join('\n')}</div></section>
 </main>
 ${footer({ current: 'topic', pre, live: true })}
-${DAILY_JS}
-${liveJs(pre)}
+${nsc ? DAILY_JS + '\n' : ''}${liveJs(pre)}
 </body>
 </html>
 `;
@@ -971,9 +1238,11 @@ var days=Math.floor((t+O)/D)-Math.floor((now+O)/D),big=el.querySelector('.big'),
 if(now>t+108e5){el.classList.add('past');big.textContent='Written';per.textContent='This paper has been written.';return}
 if(days<=0){big.textContent='Today';per.textContent='Good luck – read every question carefully.';return}
 big.innerHTML=days+'<small>'+(days===1?'day to go':'days to go')+'</small>';
+if(!ok)el.classList.add('next');ok=true;
+if(!min){per.textContent='Study hours follow when the topics are published.';return}
 per.textContent='About '+H(min/60/days)+' a day from today covers this paper.';
-if(!ok)el.classList.add('next');cum+=min;need=Math.max(need,cum/60/days);ok=true});
-var all=document.getElementById('all-papers');if(all&&ok)all.textContent='Writing all four papers? About '+H(need)+' a day, starting today, gets every remaining paper covered in time.'})();</script>`;
+cum+=min;need=Math.max(need,cum/60/days)});
+var all=document.getElementById('all-papers');if(all&&need>0)all.textContent='Writing all of these papers? About '+H(need)+' a day, starting today, gets every remaining paper covered in time.'})();</script>`;
 
 const CSS_TT = `
 .tt-wrap{padding:0;overflow:hidden}
@@ -985,7 +1254,7 @@ const CSS_TT = `
 .tt small{display:block;color:var(--ink-2);font-size:.82rem;font-weight:400;margin-top:2px}
 @media (max-width:520px){.tt th,.tt td{padding:10px 10px}.tt{font-size:.9rem}}
 .src{font-size:.88rem;color:var(--ink-2);margin-top:12px;max-width:80ch}
-.cdg{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));list-style:none;padding:0}
+.cdg{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));list-style:none;padding:0}
 .cdc{display:grid;gap:6px;align-content:start}
 .cdc .subj{display:flex;align-items:center;gap:7px;font-weight:600}
 .cdc .big{font-family:var(--mono);font-size:1.9rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
@@ -1006,20 +1275,21 @@ const CSS_TT = `
 
 function buildTimetable() {
   const url = BASE + TT_FILE;
-  const papers = [...SUBJECTS.maths.papers.map((p) => ({ p, s: SUBJECTS.maths })), ...SUBJECTS.sci.papers.map((p) => ({ p, s: SUBJECTS.sci }))];
+  const papers = SUBJ_ORDER.flatMap((k) => SUBJECTS[k].papers.map((p) => ({ p, s: SUBJECTS[k] }))).sort((a, b) => (a.p.exam.date < b.p.exam.date ? -1 : 1));
   const sameDay = { mp1: 'Same day: Mathematical Literacy Paper 1', mp2: 'Same day: Mathematical Literacy Paper 2' };
   const exKey = (e) => Object.keys(EXAMS).find((k) => EXAMS[k] === e);
-  const title = 'Matric Exam Timetable 2026: Maths & Physical Sciences';
-  const h1 = 'Matric exam timetable 2026: Maths and Physical Sciences';
-  const desc = 'NSC 2026 exam dates for Mathematics and Physical Sciences Paper 1 and 2, with a live countdown, study hours per paper and a plan for the last two weeks.';
+  const title = 'Matric Exam Timetable 2026: Maths, Physical & Life Sciences';
+  const h1 = 'Matric exam timetable 2026: Maths, Physical Sciences and Life Sciences';
+  const desc = 'NSC 2026 exam dates for Mathematics, Physical Sciences and Life Sciences Paper 1 and 2, with a live countdown, study hours per paper and last-week tips.';
   const tips = [
-    ['Write full papers under exam conditions', 'Sit a whole past paper in one go: 3 hours, 150 marks, no notes and no phone. That is 1,2 minutes per mark, so a 10-mark question deserves about 12 minutes – practise moving on when you go over.'],
+    ['Write full papers under exam conditions', 'Sit a whole past paper in one go, with no notes and no phone: 150 marks in 3 hours for Mathematics and Physical Sciences, in 2½ hours for Life Sciences. That is 1,2 minutes per mark (1 minute in Life Sciences), so a 10-mark question deserves about 12 minutes – practise moving on when you go over.'],
     ['Mark yourself with the official memo', 'Mark strictly, the way an examiner would, and keep an error list. Two days later, redo every question where you lost marks without looking at the memo.'],
     ['Spend most time where the marks are', 'Trigonometry is worth roughly 50 marks out of 150 in Mathematics Paper 2, and mechanics roughly 65 in Physics. Revise the heavy topics first, but do not skip a whole question.'],
     ['Know your formula and data sheets', 'Learn exactly which formulae and constants are given in the exam and which you must remember, and what every symbol stands for, so you do not waste time searching.'],
     ['Show every step', 'Start with the formula, put in the values and give the answer with its unit – method marks add up even if the final answer is wrong. In Euclidean geometry, back each statement with a reason.'],
     ['Plan the paper on the day', 'Read the whole paper first, start with a question you are sure of, number your answers exactly as in the paper and never leave a blank – an attempt can still earn marks.'],
     ['Check your calculator', 'Use an approved non-programmable calculator with a fresh battery, and make sure it is set to degrees before any trigonometry.'],
+    ['Answer Life Sciences the way it is marked', 'Use the exact biological terms, give as many points as the marks ask for, and draw graphs with a heading, labelled axes with units and an even scale. Write the essay in full sentences – tables, flow charts and diagrams earn no marks there.'],
     ['Make the day before a light one', 'Go over your summaries and error list instead of starting new work. Pack your admission letter, ID, pens, pencil, ruler and calculator, and get a full night’s sleep.'],
   ];
   const article = {
@@ -1027,7 +1297,7 @@ function buildTimetable() {
     image: BASE + 'og.png', inLanguage: 'en-ZA', datePublished: '2026-10-11', dateModified: TODAY,
     author: { '@type': 'Organization', name: BRAND, url: BASE },
     publisher: { '@type': 'Organization', name: BRAND, legalName: LEGAL, url: BASE, logo: { '@type': 'ImageObject', url: BASE + 'icons/icon-512.png' } },
-    about: ['National Senior Certificate examinations 2026', 'Grade 12 Mathematics', 'Grade 12 Physical Sciences'],
+    about: ['National Senior Certificate examinations 2026', 'Grade 12 Mathematics', 'Grade 12 Physical Sciences', 'Grade 12 Life Sciences'],
     citation: TT.source,
   };
   const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
@@ -1040,22 +1310,23 @@ ${topbar({ current: 'timetable' })}
 <section class="hero" aria-labelledby="h1">
 <p class="eyebrow">NSC · October–November 2026</p>
 <h1 id="h1" style="margin-top:10px">${h1}</h1>
-<p class="lead">The 2026 NSC exams run from ${TT.start} to ${TT.end}. These are the Mathematics and Physical Sciences papers – each starts at 09:00 and lasts 3 hours – with a live countdown and the study time each paper needs.</p>
+<p class="lead">The 2026 NSC exams run from ${TT.start} to ${TT.end}. These are the Mathematics, Physical Sciences and Life Sciences papers – each starts at 09:00 and lasts 3 hours (Life Sciences 2½ hours) – with a live countdown and the study time each paper needs.</p>
 <div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="#countdown">Countdown and study hours</a></div>
 </section>
 
 <section class="sec" aria-labelledby="dates"><h2 id="dates" style="margin-bottom:14px">Exam dates</h2>
 <div class="card tt-wrap"><table class="tt">
 <thead><tr><th scope="col">Paper</th><th scope="col">Date and time</th></tr></thead>
-<tbody>${papers.map(({ p }) => { const e = p.exam; const k = exKey(e); return `<tr><th scope="row">${e.name}${sameDay[k] ? `<small>${sameDay[k]}</small>` : ''}</th><td>${e.long}<small>09:00 · 3 hours · 150 marks</small></td></tr>`; }).join('')}</tbody>
+<tbody>${papers.map(({ p }) => { const e = p.exam; const k = exKey(e); return `<tr><th scope="row">${e.name}${sameDay[k] ? `<small>${sameDay[k]}</small>` : ''}</th><td>${e.long}<small>09:00 · ${e.len} · 150 marks</small></td></tr>`; }).join('')}</tbody>
 </table></div>
 <p class="src">Dates from the DBE’s 2026 NSC timetable – confirm with your school, the DBE can amend it. Source: <a href="${TT.source}" rel="noopener">FundiConnect – 2026 matric exam dates</a>.</p>
+<p class="src">Grade 10 and 11 exams are set by schools and provinces, so they are not on this timetable – see the <a href="${GRADES[10].file}">Grade 10</a> and <a href="${GRADES[11].file}">Grade 11</a> topics and study time.</p>
 </section>
 
 <section class="sec" id="countdown" aria-labelledby="cd-h"><h2 id="cd-h" style="margin-bottom:6px">Countdown and study hours per paper</h2>
 <p class="muted" style="margin-bottom:16px;max-width:75ch">Study time is the total for every topic in the paper: notes and worked examples, every exam-style question at exam pace (1,2 minutes per mark) and a 10-minute quiz per topic.</p>
-<ul class="cdg">${papers.map(({ p }) => { const e = p.exam; return `<li class="card cdc" data-at="${e.at}" data-min="${p.total}"><span class="subj"><span class="dot ${e.subj}"></span>${e.short}</span><span class="big">${e.dm}</span><span class="small muted">${e.wd} ${e.dm} · 09:00</span><span><b>≈${NB}${dur(p.total)}</b> of study · ${p.topics.length} topics</span><span class="per">${p.nQ} exam-style questions (${p.marks} marks) in the portal.</span></li>`; }).join('')}</ul>
-<p class="all" id="all-papers">All four papers together: ≈${NB}${dur(sum(papers, (x) => x.p.total))} of study.</p>
+<ul class="cdg">${papers.map(({ p }) => { const e = p.exam; return `<li class="card cdc" data-at="${e.at}" data-min="${p.total}"><span class="subj"><span class="dot ${e.subj}"></span>${e.short}</span><span class="big">${e.dm}</span><span class="small muted">${e.wd} ${e.dm} · 09:00</span>${p.topics.length ? `<span><b>≈${NB}${dur(p.total)}</b> of study · ${pl(p.topics.length, 'topic')}</span><span class="per">${p.nQ} exam-style questions (${p.marks} marks) in the portal.</span>` : '<span>Topics coming soon</span><span class="per">Study hours follow when the topics are published.</span>'}</li>`; }).join('')}</ul>
+<p class="all" id="all-papers">All ${papers.length} papers together: ≈${NB}${dur(sum(papers, (x) => x.p.total))} of study.</p>
 <p class="small muted" style="margin-top:6px;max-width:75ch">These figures assume you start every topic from scratch. If you have already covered some topics, you need less – a tutor can help you choose what to focus on.</p>
 </section>
 
@@ -1065,13 +1336,13 @@ ${topbar({ current: 'timetable' })}
 </section>
 
 <section class="sec" aria-labelledby="topics-h"><h2 id="topics-h" style="margin-bottom:16px">Topics in each paper</h2>
-<div class="paper-links">${papers.map(({ p }) => `<div class="card"><p class="eyebrow">${p.exam.short} · ${p.exam.wd} ${p.exam.dm}</p><ul>${p.topics.map((t) => `<li><a href="topics/${t.id}.html">${esc(t.title)}</a></li>`).join('')}</ul></div>`).join('')}</div>
+<div class="paper-links">${papers.map(({ p }) => `<div class="card"><p class="eyebrow">${p.exam.short} · ${p.exam.wd} ${p.exam.dm}</p>${p.topics.length ? `<ul>${p.topics.map((t) => `<li><a href="topics/${t.id}.html">${esc(t.title)}</a></li>`).join('')}</ul>` : '<p class="muted" style="margin-top:8px">Topics coming soon.</p>'}</div>`).join('')}</div>
 </section>
 
 <section class="sec band" aria-labelledby="cta">
 <h2 id="cta">Want help with the papers still ahead?</h2>
-<p>Book a one-on-one online lesson on the topics that worry you – 60, 90 or 120 minutes, from <span data-fee-from>${rand(Math.min(FEES.maths, FEES.phys, FEES.chem))}</span> per hour. You pay by EFT only after the tutor confirms.</p>
-<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="maths.html">Maths topics</a><a class="btn lg" href="physical-sciences.html">Physical Sciences topics</a></div>
+<p>Book a one-on-one online lesson on the topics that worry you – 60, 90 or 120 minutes, from <span data-fee-from>${rand(minFee())}</span> per hour. You pay by EFT only after the tutor confirms.</p>
+<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="maths.html">Maths topics</a><a class="btn lg" href="physical-sciences.html">Physical Sciences topics</a><a class="btn lg" href="life-sciences.html">Life Sciences topics</a></div>
 </section>
 </main>
 ${footer({ current: 'timetable', live: true })}
@@ -1087,8 +1358,8 @@ ${liveJs('')}
 const TUTOR_FILE = 'tutor-apply.html';
 const PROVINCES = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'];
 const TUTOR = {
-  lead: 'Adventuity runs live online lessons for Grade 12 learners across South Africa. We are looking for tutors who can explain Mathematics and Physical Sciences clearly, one-on-one or in small groups.',
-  who: 'Tutors who know Grade 12 (CAPS/NSC) Mathematics and/or Physical Sciences (Physics, Chemistry) well. If you teach Life Sciences or another subject, tell us in your application.',
+  lead: 'Adventuity runs live online lessons for Grade 10–12 learners across South Africa, with a focus on matric. We are looking for tutors who can explain Mathematics, Physical Sciences or Life Sciences clearly, one-on-one or in small groups.',
+  who: 'Tutors who know CAPS Mathematics, Physical Sciences (Physics, Chemistry) or Life Sciences well – for Grade 12 (NSC) and also for Grades 10 and 11. If you teach another subject, tell us in your application.',
   work: 'Lessons are online – video, screen share and a whiteboard – one-on-one or in small groups. Afternoons and Saturdays are when learners book most. We discuss rates and hours at the interview.',
   need: ['A qualification or studies in a related field', 'A laptop and a stable internet connection', 'Clear explanations that a learner can follow step by step'],
   steps: [['Apply with your CV', 'Fill in the form below and upload your CV.'],
@@ -1187,9 +1458,9 @@ f.addEventListener('submit',function(e){e.preventDefault();if(btn.disabled)retur
 
 function buildTutor() {
   const url = BASE + TUTOR_FILE;
-  const title = 'Tutor jobs: teach Grade 12 Maths & Science | Adventuity';
-  const desc = 'Tutor Grade 12 Maths and Physical Sciences online with Adventuity: one-on-one and small-group lessons for matric learners across South Africa. Apply now.';
-  const h1 = 'Become a tutor: teach Grade 12 Maths and Physical Sciences online';
+  const title = 'Tutor jobs: Maths, Physical & Life Sciences | Adventuity';
+  const desc = 'Tutor Grade 10–12 Maths, Physical Sciences or Life Sciences online with Adventuity: one-on-one and small-group lessons across South Africa. Apply now.';
+  const h1 = 'Become a tutor: teach Maths, Physical Sciences or Life Sciences online';
   const REQ = ' <span class="req" aria-hidden="true">*</span>';
   const OPT = ' <span class="opt">(optional)</span>';
   const fld = (name, label, input, o = {}) => `<div class="field" id="f-${name}"><label for="in-${name}">${label}${o.req ? REQ : o.opt ? OPT : ''}</label>${o.hint ? `<p class="hint" id="hint-${name}">${o.hint}</p>` : ''}${input}<p class="err" id="err-${name}" hidden></p>${o.after || ''}</div>`;
@@ -1199,7 +1470,7 @@ function buildTutor() {
 
   const descHtml = `<p>${esc(TUTOR.lead)}</p><p><b>Who we’re looking for:</b> ${esc(TUTOR.who)}</p><p><b>The work:</b> ${esc(TUTOR.work)}</p><p><b>What you need:</b></p><ul>${TUTOR.need.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><p><b>How it works:</b></p><ol>${TUTOR.steps.map(([h, p]) => `<li>${esc(h)}: ${esc(p)}</li>`).join('')}</ol>`;
   const job = {
-    '@context': 'https://schema.org', '@type': 'JobPosting', title: 'Online Grade 12 Mathematics and Physical Sciences Tutor',
+    '@context': 'https://schema.org', '@type': 'JobPosting', title: 'Online Mathematics, Physical Sciences and Life Sciences Tutor (Grades 10–12)',
     description: descHtml, datePosted: '2026-10-12', validThrough: '2027-03-31T23:59:00+02:00', employmentType: ['PART_TIME', 'CONTRACTOR'],
     hiringOrganization: { '@type': 'Organization', name: BRAND, sameAs: BASE, logo: BASE + 'icons/icon-512.png' },
     jobLocationType: 'TELECOMMUTE', applicantLocationRequirements: { '@type': 'Country', name: 'South Africa' }, directApply: true, url,
@@ -1244,7 +1515,7 @@ ${fld('town', 'Town or city', inp('town', 'text', { ac: 'address-level2', max: 8
 </div>
 </fieldset>
 <fieldset><legend>What you teach</legend>
-${group('subjects', 'Subjects you can teach', 'checkbox', SUBJECT_OPTS, { req: 1, hint: 'Choose at least one. For Life Sciences or another subject, tell us more under “About you”.' })}
+${group('subjects', 'Subjects you can teach', 'checkbox', SUBJECT_OPTS, { req: 1, hint: 'Choose at least one. For another subject, tell us more under “About you”.' })}
 ${group('grades', 'Grades', 'checkbox', [['10', 'Grade 10'], ['11', 'Grade 11'], ['12', 'Grade 12']])}
 <div class="fgrid">
 ${fld('qualification', 'Qualification or current studies', inp('qualification', 'text', { req: 1, max: 160, ph: 'e.g. BSc Physics (2023) or BEd, 3rd year' }), { req: 1 })}
@@ -1298,6 +1569,8 @@ ${topbar({ current: '404', abs: true })}
 <ul style="margin-top:22px;padding-left:20px;display:grid;gap:8px">
 <li><a href="${BASE}maths.html">Grade 12 Mathematics topics and study time</a></li>
 <li><a href="${BASE}physical-sciences.html">Grade 12 Physical Sciences topics and study time</a></li>
+<li><a href="${BASE}life-sciences.html">Grade 12 Life Sciences topics and study time</a></li>
+<li><a href="${BASE}${GRADES[10].file}">Grade 10 topics</a> and <a href="${BASE}${GRADES[11].file}">Grade 11 topics</a></li>
 <li><a href="${BASE}#fees">Lesson fees</a></li>
 <li><a href="${BASE}${SIGNUP}">Create a free account and book a lesson</a></li>
 </ul>
@@ -1307,13 +1580,14 @@ ${footer({ current: '404', abs: true })}
 </body>
 </html>
 `;
-  return head({ file: '404.html', url: BASE + '404.html', title: 'Page not found | Adventuity', desc: 'This page does not exist. Go to Adventuity for online Grade 12 Maths and Physical Sciences tutoring in South Africa.', css: CSS_BASE, abs: true, noindex: true }) + '\n' + body;
+  return head({ file: '404.html', url: BASE + '404.html', title: 'Page not found | Adventuity', desc: 'This page does not exist. Go to Adventuity for online Grade 10–12 Maths, Physical Sciences and Life Sciences tutoring in South Africa.', css: CSS_BASE, abs: true, noindex: true }) + '\n' + body;
 }
 
 /* ---------- sitemap / robots ---------- */
 const sitemap = () => `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${[['', '1.0'], ['maths.html', '0.9'], ['physical-sciences.html', '0.9'], [TT_FILE, '0.8'], ...ALL.map((t) => ['topics/' + t.id + '.html', '0.7']), ['tutor-apply.html', '0.6']].map(([p, pr]) => `  <url><loc>${BASE}${p}</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>${pr}</priority></url>`).join('\n')}
+${[['', '1.0'], ['maths.html', '0.9'], ['physical-sciences.html', '0.9'], ['life-sciences.html', '0.9'], [TT_FILE, '0.8'], [GRADES[10].file, '0.8'], [GRADES[11].file, '0.8'],
+  ...PAGES.map((t) => ['topics/' + t.id + '.html', t.gr === 12 ? '0.7' : '0.6']), ['tutor-apply.html', '0.6']].map(([p, pr]) => `  <url><loc>${BASE}${p}</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>${pr}</priority></url>`).join('\n')}
 </urlset>
 `;
 const robots = () => `User-agent: *
@@ -1334,19 +1608,19 @@ body{background:#1c3246;color:#fff;font-family:Poppins,"IBM Plex Sans","Segoe UI
 .brand i{display:block;width:72px;height:70px;background:#fff;-webkit-mask:${MARK};mask:${MARK}}
 .brand b{font-size:34px;font-weight:700;letter-spacing:.08em}
 .brand span{display:block;font-size:18px;font-weight:500;color:#a9c3dc;letter-spacing:.01em;margin-top:2px}
-.eb{margin-top:52px;font-size:20px;letter-spacing:.16em;text-transform:uppercase;color:#a9c3dc;font-weight:500}
-h1{font-size:64px;line-height:1.06;margin:14px 0 0;max-width:860px;font-weight:700;letter-spacing:-.01em}
-.sub{margin-top:22px;font-size:26px;line-height:1.35;color:#d6e2ed;max-width:820px;font-weight:500}
+.eb{margin-top:38px;font-size:20px;letter-spacing:.16em;text-transform:uppercase;color:#a9c3dc;font-weight:500}
+h1{font-size:54px;line-height:1.06;margin:12px 0 0;max-width:900px;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.sub{margin-top:18px;font-size:24px;line-height:1.35;color:#d6e2ed;max-width:900px;font-weight:500}
 .chips{margin-top:auto;display:flex;gap:12px;align-items:center}
-.chip{border:2px solid rgba(255,255,255,.35);border-radius:999px;padding:8px 20px;font-size:21px;font-weight:600}
+.chip{border:2px solid rgba(255,255,255,.35);border-radius:999px;padding:8px 18px;font-size:20px;font-weight:600;white-space:nowrap}
 .chip.s{background:#fff;color:#1c3246;border-color:#fff}
 </style></head><body><div class="grid"></div><div class="ghost"></div>
 <div class="c">
 <div class="brand"><i></i><div><b>ADVENTUITY</b><span>${SLOGAN}</span></div></div>
-<p class="eb">CAPS · NSC · Online · South Africa</p>
-<h1>Grade 12 Maths &amp; Physical Sciences tutoring online</h1>
-<p class="sub">Live one-on-one lessons, study notes, step-by-step worked examples and ${N.q} exam-style questions with memos.</p>
-<div class="chips"><span class="chip s">Book a lesson</span><span class="chip">Mathematics P1 &amp; P2</span><span class="chip">Physics</span><span class="chip">Chemistry</span></div>
+<p class="eb">CAPS · NSC · Grades 10–12 · Online · South Africa</p>
+<h1>Grade 12 Maths, Physical Sciences &amp; Life Sciences tutoring online</h1>
+<p class="sub">Live one-on-one lessons for matric – and Grades 10 and 11 – with study notes, worked examples and ${N.q} exam-style questions with memos.</p>
+<div class="chips"><span class="chip s">Book a lesson</span><span class="chip">Mathematics</span><span class="chip">Physical Sciences</span><span class="chip">Life Sciences</span><span class="chip">Grades 10–12</span></div>
 </div></body></html>`;
 }
 async function renderOg(file) {
@@ -1370,8 +1644,11 @@ async function renderOg(file) {
     'index.html': buildIndex(),
     'maths.html': buildSubject('maths'),
     'physical-sciences.html': buildSubject('sci'),
+    'life-sciences.html': buildSubject('life'),
+    [GRADES[10].file]: buildGrade(10),
+    [GRADES[11].file]: buildGrade(11),
     [TT_FILE]: buildTimetable(),
-    ...Object.fromEntries(ALL.map((t) => ['topics/' + t.id + '.html', buildTopic(t)])),
+    ...Object.fromEntries(PAGES.map((t) => ['topics/' + t.id + '.html', buildTopic(t)])),
     [TUTOR_FILE]: buildTutor(),
     '404.html': build404(),
     'sitemap.xml': sitemap(),
@@ -1385,9 +1662,11 @@ async function renderOg(file) {
     }
     fs.writeFileSync(path.join(OUT, f), c);
   }
-  console.log('wrote', Object.keys(files).length, 'files:', Object.keys(files).filter((f) => !f.startsWith('topics/')).join(', '), '+', ALL.length, 'topic pages');
+  console.log('wrote', Object.keys(files).length, 'files:', Object.keys(files).filter((f) => !f.startsWith('topics/')).join(', '), '+', PAGES.length, 'topic pages');
   if (!SKIP_OG && await renderOg(path.join(OUT, 'og.png'))) console.log('wrote og.png');
   console.log('\nStudy time per paper:');
-  for (const s of Object.values(SUBJECTS)) for (const p of s.papers) console.log(`  ${s.name} ${p.label} (${p.theme.length < 12 ? p.theme : p.topics.length + ' topics'}): ${p.topics.length} topics, ${p.nSec} sections, ${p.nQ} questions / ${p.marks} marks, ≈ ${dur(p.total).replace(/ /g, ' ')}`);
+  const line = (gr, s, p) => console.log(`  Gr ${gr} ${s.name} ${p.label}${p.sub ? ' (' + p.sub + ')' : ''}: ` + (p.topics.length ? `${p.topics.length} topics, ${p.nSec} sections, ${p.nQ} questions / ${p.marks} marks, ≈ ${plainDur(p.total)}` : 'coming soon'));
+  for (const s of Object.values(SUBJECTS)) for (const p of s.papers) line(12, s, p);
+  for (const g of Object.values(GRADES)) for (const s of g.list) for (const p of s.papers) line(g.gr, s, p);
   console.log(`  Totals: ${N.topics} topics, ${N.sections} sections, ${N.q} exam-style questions`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -22,28 +22,57 @@ SOURCES = ['maths_a.js', 'maths_b.js', 'maths_c.js', 'maths_d.js', 'physics.js',
 if '--bundle' in sys.argv: bundle_path = sys.argv[sys.argv.index('--bundle') + 1]
 elif all(os.path.exists(os.path.join(D, f)) for f in SOURCES):
     subprocess.run(['node', os.path.join(D, 'tools', 'dump_content.js'), tmp], check=True); bundle_path = os.path.join(tmp, 'bundle.json')
-else:
-    subprocess.run([sys.executable, os.path.join(D, 'tools', 'decrypt_content.py'), os.path.join(OUT, 'content.bin'), os.path.join(tmp, 'bundle.json')], check=True); bundle_path = os.path.join(tmp, 'bundle.json')
+else:   # no plain sources here: decrypt the published bundles (content.bin = Grade 12, content-10.bin, content-11.bin) and merge them
+    B = {'v': 1, 'topics': {}, 'practice': {}, 'figs': {}}
+    for f in ['content.bin', 'content-10.bin', 'content-11.bin']:
+        if not os.path.exists(os.path.join(OUT, f)): continue
+        part = os.path.join(tmp, f + '.json')
+        subprocess.run([sys.executable, os.path.join(D, 'tools', 'decrypt_content.py'), os.path.join(OUT, f), part], check=True)
+        p = json.load(open(part, encoding='utf-8'))
+        for sj, ts in p['topics'].items(): B['topics'].setdefault(sj, []).extend(ts)
+        B['practice'].update(p.get('practice', {})); B['figs'].update(p.get('figs', {}))
+    bundle_path = os.path.join(tmp, 'bundle.json'); open(bundle_path, 'w', encoding='utf-8').write(json.dumps(B, ensure_ascii=False))
 bundle = open(bundle_path, 'rb').read()
 B = json.loads(bundle)
+SUBJECTS = ('maths', 'phys', 'chem', 'life')
+gr_of = lambda t: int(t.get('gr') or 12)
 
 shutil.rmtree(OUT, ignore_errors=True); os.makedirs(os.path.join(OUT, 'icons')); os.makedirs(os.path.join(OUT, 'assets'))
 
-# ---- content: private bundle (encrypted) + public outline (titles, study-time estimates, question ids and marks only)
+# ---- content: private bundles (encrypted, one per grade) + public outline (titles, study-time estimates, question ids and marks only)
 outline = []
-for sj in ('maths', 'phys', 'chem'):
-    for t in B['topics'][sj]:
+for sj in SUBJECTS:
+    for t in B['topics'].get(sj, []):
         pq = [[q['id'], int(q.get('marks') or 0)] for q in B['practice'].get(t['id'], [])]
-        outline.append({'id': t['id'], 'subj': sj, 'title': t['title'], 'paper': t['paper'], 'weight': t.get('weight', ''), 'grade': t.get('grade', ''),
+        outline.append({'id': t['id'], 'subj': sj, 'gr': gr_of(t), 'title': t['title'], 'paper': t['paper'], 'weight': t.get('weight', ''), 'grade': t.get('grade', ''),
                         'book': {'chapter': t['book']['chapter'], 'pages': t['book']['pages']} if t.get('book') else None,
                         'sections': [{'id': s['id'], 'title': s['title'], 'est': s.get('est') or 20} for s in t['sections']],
                         'pc': len(pq), 'pm': sum(m for _, m in pq), 'pq': pq, 'qc': len(t.get('quiz') or [])})
 outline = json.dumps(outline, ensure_ascii=False)
-iv = os.urandom(12)
-blob = iv + AESGCM(key).encrypt(iv, gzip.compress(bundle, 9), None)
-open(os.path.join(OUT, 'content.bin'), 'wb').write(blob)
+# Each grade is its own file so a learner downloads only the grade they open (Grade 12 keeps the name content.bin).
+fig_owner = {}
+for sj in SUBJECTS:
+    for t in B['topics'].get(sj, []):
+        for s in t['sections']: fig_owner['sec:' + s['id']] = gr_of(t)
+        for q in B['practice'].get(t['id'], []): fig_owner[q['id']] = gr_of(t)
+parts = {}
+for sj in SUBJECTS:
+    for t in B['topics'].get(sj, []):
+        p = parts.setdefault(gr_of(t), {'v': 1, 'topics': {s: [] for s in SUBJECTS}, 'practice': {}, 'figs': {}})
+        p['topics'][sj].append(t)
+        if t['id'] in B['practice']: p['practice'][t['id']] = B['practice'][t['id']]
+for k, f in B['figs'].items():
+    g = fig_owner.get(k)
+    for gg in ([g] if g in parts else list(parts)):   # a figure no topic claims goes into every grade
+        parts[gg]['figs'][k] = f
+for g in sorted(parts):
+    name = 'content.bin' if g == 12 else 'content-%d.bin' % g
+    plain = json.dumps(parts[g], ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    iv = os.urandom(12)
+    blob = iv + AESGCM(key).encrypt(iv, gzip.compress(plain, 9), None)
+    open(os.path.join(OUT, name), 'wb').write(blob)
+    print(name, 'Grade', g, round(len(blob) / 1024), 'KB (plain', round(len(plain) / 1024), 'KB)')
 content_version = BUILD
-print('content.bin', round(len(blob) / 1024), 'KB (plain', round(len(bundle) / 1024), 'KB)')
 wr('assets/outline.js', 'window.ADV_OUTLINE = ' + outline + ';\n')
 if DEV:
     shutil.rmtree(os.path.join(D, 'out', 'dev'), ignore_errors=True); os.makedirs(os.path.join(D, 'out', 'dev'))
@@ -162,6 +191,8 @@ swa = {
     {"route": "/portal.html", "headers": {"Cache-Control": "no-cache", "X-Robots-Tag": "noindex"}},
     {"route": "/config.js", "headers": {"Cache-Control": "no-cache"}},
     {"route": "/content.bin", "headers": {"Cache-Control": "no-cache"}},
+    {"route": "/content-10.bin", "headers": {"Cache-Control": "no-cache"}},
+    {"route": "/content-11.bin", "headers": {"Cache-Control": "no-cache"}},
     {"route": "/assets/*", "headers": {"Cache-Control": "public, max-age=86400"}},
     {"route": "/icons/*", "headers": {"Cache-Control": "public, max-age=604800"}}
   ],

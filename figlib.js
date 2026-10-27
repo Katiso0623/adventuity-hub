@@ -76,7 +76,35 @@
     }
     curves.forEach((c) => {
       out += '<path d="' + c.d + '" class="curve c' + (c.k % 4) + (c.dashed ? ' dashed' : '') + '" clip-path="url(#cp)"/>';
-      if (c.label) { const inside = c.pts.filter((p) => p[1] > y0 && p[1] < y1); const p = inside.length ? inside[Math.floor(inside.length * 0.85)] : null; if (p) out += '<text x="' + (sx(p[0]) + 6) + '" y="' + (sy(p[1]) - 6) + '" class="lbl c' + (c.k % 4) + '">' + esc(c.label) + '</text>'; }
+    });
+    /* curve labels: try several spots along each curve and both sides of it; keep the spot farthest from every curve, point and earlier label */
+    const placed = [];
+    const allPts = curves.flatMap((c) => c.pts.filter((p) => p[1] > y0 && p[1] < y1).map((p) => [sx(p[0]), sy(p[1])]));
+    (spec.points || []).forEach((pt) => { const X = sx(num(pt.x)), Y = sy(num(pt.y)); allPts.push([X, Y]); if (pt.label) placed.push([X + 7, Y - 20, 8 * String(pt.label).length + 2]); });
+    (spec.vlines || []).forEach((v) => { for (let yy = m.t; yy <= H - m.b; yy += 6) allPts.push([sx(v), yy]); });
+    (spec.hlines || []).forEach((v) => { for (let xx = m.l; xx <= W - m.r; xx += 6) allPts.push([xx, sy(v)]); });
+    if (y0 <= 0 && y1 >= 0) for (let xx = m.l; xx <= W - m.r; xx += 6) allPts.push([xx, sy(0)]);   // x-axis and its "x" label
+    if (x0 <= 0 && x1 >= 0) for (let yy = m.t; yy <= H - m.b; yy += 6) allPts.push([sx(0), yy]);   // y-axis and its "y" label
+    allPts.push([W - m.r - 4, sy(Math.min(Math.max(0, y0), y1)) - 10], [sx(Math.min(Math.max(0, x0), x1)) + 10, m.t + 6]);
+    curves.forEach((c) => {
+      if (!c.label) return;
+      const inside = c.pts.filter((p) => p[1] > y0 && p[1] < y1); if (!inside.length) return;
+      const tw = 8 * String(c.label).length + 4; let best = null;
+      [0.88, 0.75, 0.62, 0.95, 0.4, 0.25, 0.12].forEach((f) => {
+        const i = Math.min(inside.length - 1, Math.floor(inside.length * f)); const p = inside[i], q = inside[Math.min(inside.length - 1, i + 1)], o = inside[Math.max(0, i - 1)];
+        const X = sx(p[0]), Y = sy(p[1]); let dx = sx(q[0]) - sx(o[0]), dy = sy(q[1]) - sy(o[1]); const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+        [[-dy, dx], [dy, -dx]].forEach(([nx, ny]) => {
+          const cx = X + nx * 16, cy = Y + ny * 16; const lx = cx - tw / 2, ly = cy - 7;
+          if (lx < m.l + 2 || lx + tw > W - m.r - 2 || ly < m.t + 2 || ly + 14 > H - m.b - 2) return;
+          let d = Infinity; allPts.forEach(([a, b]) => { const ex = Math.max(lx - a, 0, a - (lx + tw)), ey = Math.max(ly - b, 0, b - (ly + 14)); d = Math.min(d, Math.hypot(ex, ey)); });
+          placed.forEach(([px, py, pw]) => { const ex = Math.max(lx - (px + pw), 0, px - (lx + tw)), ey = Math.max(ly - (py + 14), 0, py - (ly + 14)); d = Math.min(d, Math.hypot(ex, ey) - 4); });
+          const score = Math.min(d, 24) - f * 0.01;
+          if (!best || score > best.score) best = { score, lx, ly, cx, cy };
+        });
+      });
+      if (!best) { const p = inside[Math.floor(inside.length * 0.85)]; best = { lx: sx(p[0]) + 6, ly: sy(p[1]) - 20, cx: sx(p[0]) + 6 + tw / 2, cy: sy(p[1]) - 13 }; }
+      placed.push([best.lx, best.ly, tw]);
+      out += '<text x="' + best.cx.toFixed(1) + '" y="' + (best.cy + 5).toFixed(1) + '" text-anchor="middle" class="lbl c' + (c.k % 4) + '">' + esc(c.label) + '</text>';
     });
     (spec.points || []).forEach((pt) => { const X = sx(num(pt.x)), Y = sy(num(pt.y)); out += '<circle cx="' + X + '" cy="' + Y + '" r="4" class="pt"/>'; if (pt.label) out += '<text x="' + (X + 7) + '" y="' + (Y - 7) + '" class="lbl">' + esc(pt.label) + '</text>'; });
     return out + '</svg>';

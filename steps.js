@@ -9,12 +9,13 @@
   const T = (s) => esc(mj(s));
 
   /* split text on a separator but never inside \( ... \) */
-  function splitOutsideMath(str, seps) {
-    const out = []; let cur = ''; let i = 0; let inMath = false;
+  function splitOutsideMath(str, seps, keepBrackets) {
+    const out = []; let cur = ''; let i = 0; let inMath = false; let depth = 0;
     while (i < str.length) {
       if (str.startsWith('\\(', i)) { inMath = true; cur += '\\('; i += 2; continue; }
       if (str.startsWith('\\)', i)) { inMath = false; cur += '\\)'; i += 2; continue; }
-      if (!inMath) {
+      if (!inMath && keepBrackets) { const ch = str[i]; if (ch === '(' || ch === '[') depth++; else if ((ch === ')' || ch === ']') && depth > 0) depth--; }
+      if (!inMath && !(keepBrackets && depth > 0)) {
         const sep = seps.find((sp) => str.startsWith(sp, i));
         if (sep) { out.push({ text: cur, sep }); cur = ''; i += sep.length; continue; }
       }
@@ -52,7 +53,7 @@
     const str = String(line);
     const m = str.match(/^(\S{1,14})\s{2,}([\s\S]*)$/);
     const label = m ? m[1] : ''; const body = m ? m[2] : str;
-    const parts = splitOutsideMath(body, [' ; ', ' ⇒ ']);
+    const parts = splitOutsideMath(body, [' ; ', ' ⇒ '], true);   // keep coordinates (4 ; 0) and intervals [−2 ; 4) together
     const rows = parts.map((p, k) => {
       const ticks = (p.text.match(/✓/g) || []).length;
       const text = p.text.replace(/\s*✓\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
