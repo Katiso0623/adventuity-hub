@@ -150,6 +150,7 @@ class H(SimpleHTTPRequestHandler):
             if len(b.get('password') or '') < 8: return self.reply(400, {'error': 'Use a password of at least 8 characters'})
             if run('select 1 from auth.users where lower(email) = lower(%s)' % lit(b.get('email')), 'service'): return self.reply(400, {'error': 'An account with this e-mail already exists – sign in instead'})
             meta = {k: b.get(k, '') for k in ('full_name', 'phone', 'school', 'guardian_phone')}; meta['pw'] = b['password']
+            if str(b.get('grade') or '') in ('10', '11', '12'): meta['grade'] = str(b['grade'])
             run('insert into auth.users (email, raw_user_meta_data) values (%s, %s::jsonb)' % (lit(b['email']), lit(json.dumps(meta))), 'service'); return self.reply(200, {'ok': True})
         if name == 'notify': return self.reply(200, {'sent': 0, 'devices': 0})
         if name == 'admin-users':
@@ -160,7 +161,7 @@ class H(SimpleHTTPRequestHandler):
                 meta = {'full_name': b.get('full_name', ''), 'phone': b.get('phone', ''), 'school': b.get('school', ''), 'pw': b['password']}
                 nid = run('insert into auth.users (email, raw_user_meta_data) values (%s, %s::jsonb) returning id' % (lit(b['email'].lower()), lit(json.dumps(meta))), 'service').splitlines()[0]
                 if b.get('role') == 'tutor': patch = "role = 'tutor', approved = true, must_change_password = true, meet_link = %s, tutor_rate = %s, tutor_subjects = %s" % (lit(b.get('meet_link', '')), float(b.get('tutor_rate') or 0), lit(b.get('tutor_subjects', '')))
-                else: patch = 'approved = %s, must_change_password = true' % ('false' if b.get('approved') is False else 'true')
+                else: patch = 'approved = %s, must_change_password = true, grade = %s' % ('false' if b.get('approved') is False else 'true', int(b['grade']) if str(b.get('grade') or '') in ('10', '11', '12') else 'null')
                 prof = run('with p as (update public.profiles set %s where id = %s returning *) select row_to_json(p) from p' % (patch, lit(nid)), 'service')
                 return self.reply(200, {'ok': True, 'user_id': nid, 'profile': json.loads(prof)})
             if b.get('action') == 'reset_password': run("update auth.users set raw_user_meta_data = raw_user_meta_data || jsonb_build_object('pw', %s) where id = %s; update public.profiles set must_change_password = true where id = %s" % (lit(b['password']), lit(b['user_id']), lit(b['user_id'])), 'service')

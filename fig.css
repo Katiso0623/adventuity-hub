@@ -17,3 +17,25 @@ svg.fig .thin{stroke-width:1.2}
 svg.fig .shade{fill:var(--fig1);fill-opacity:.13;stroke:none}
 svg.fig .arrow{stroke-width:2.2;stroke:var(--fig2)}
 svg.fig marker path{fill:var(--ink-2)}
+/* data tables and schematic drawings (Life Sciences, apparatus) */
+.fig-table{width:100%;max-width:640px;overflow-x:auto}
+.fig-table table{width:100%;border-collapse:collapse;font-size:.88rem;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.fig-table caption{caption-side:top;text-align:left;font-weight:600;font-size:.85rem;padding:0 0 6px;color:var(--ink)}
+.fig-table th,.fig-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:center;font-variant-numeric:tabular-nums}
+.fig-table thead th{background:var(--surface-2);font-weight:600}
+.fig-table tbody th{text-align:left;font-weight:600}
+svg.fig.bio .line{stroke:var(--ink);stroke-width:1.6;fill:none}
+svg.fig.bio .thick{stroke-width:2.6} svg.fig.bio .thin{stroke-width:1}
+svg.fig.bio .ink{fill:var(--ink);stroke:none} svg.fig.bio .none{fill:none} svg.fig.bio .dot{fill:var(--ink);stroke:none}
+svg.fig.bio .soft{fill:var(--surface-2);stroke:var(--ink-2);stroke-width:1.2}
+svg.fig.bio .fa{fill:var(--fig1);fill-opacity:.18;stroke:var(--fig1);stroke-width:1.6}
+svg.fig.bio .fb{fill:var(--fig2);fill-opacity:.2;stroke:var(--fig2);stroke-width:1.6}
+svg.fig.bio .fc{fill:var(--fig3);fill-opacity:.18;stroke:var(--fig3);stroke-width:1.6}
+svg.fig.bio .fd{fill:var(--fig4);fill-opacity:.18;stroke:var(--fig4);stroke-width:1.6}
+svg.fig.bio .fe{fill:#c2362e;fill-opacity:.16;stroke:#c2362e;stroke-width:1.6}
+svg.fig.bio .ff{fill:#d4a017;fill-opacity:.2;stroke:#a87f0d;stroke-width:1.6}
+svg.fig.bio .lbl{font-size:13px;fill:var(--ink);font-family:var(--body);stroke:none}
+svg.fig.bio .lbl-s{font-size:11px;fill:var(--ink-2);font-family:var(--body);stroke:none}
+svg.fig.bio .lbl-i{font-size:13px;fill:var(--ink);font-style:italic;font-family:var(--body);stroke:none}
+svg.fig.bio .arrow{stroke:var(--fig2);stroke-width:2;fill:none}
+svg.fig.bio text.c0{fill:var(--fig1)} svg.fig.bio text.c1{fill:var(--fig2)} svg.fig.bio text.c2{fill:var(--fig3)} svg.fig.bio text.c3{fill:var(--fig4)}

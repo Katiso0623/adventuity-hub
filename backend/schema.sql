@@ -28,8 +28,10 @@ create table if not exists public.profiles (
   meet_link text not null default '',                     -- tutors: their own Google Meet link (default for their lessons)
   tutor_rate numeric(10,2) not null default 0,            -- tutors: pay per hour (admin only)
   tutor_subjects text not null default '',                -- tutors: e.g. 'maths,phys'
+  grade smallint check (grade between 8 and 12),           -- learners: school grade (10, 11 or 12)
   created_at timestamptz not null default now()
 );
+alter table public.profiles add column if not exists grade smallint check (grade between 8 and 12);
 -- upgrade path for databases created before tutor accounts (2026-10-26)
 alter table public.profiles add column if not exists must_change_password boolean not null default false;
 alter table public.profiles add column if not exists meet_link text not null default '';
@@ -82,12 +84,13 @@ language plpgsql security definer set search_path = public as $$
 declare admin_email text;
 begin
   select value into admin_email from public.app_config where key = 'admin_email';
-  insert into public.profiles (id, email, full_name, phone, school, guardian_phone, role, approved)
+  insert into public.profiles (id, email, full_name, phone, school, guardian_phone, grade, role, approved)
   values (new.id, new.email,
           coalesce(new.raw_user_meta_data->>'full_name', ''),
           coalesce(new.raw_user_meta_data->>'phone', ''),
           coalesce(new.raw_user_meta_data->>'school', ''),
           coalesce(new.raw_user_meta_data->>'guardian_phone', ''),
+          case when coalesce(new.raw_user_meta_data->>'grade', '') in ('8','9','10','11','12') then (new.raw_user_meta_data->>'grade')::smallint end,
           case when lower(new.email) = lower(coalesce(admin_email, '')) then 'admin' else 'learner' end,
           lower(new.email) = lower(coalesce(admin_email, '')))
   on conflict (id) do nothing;
@@ -111,7 +114,7 @@ create policy "private settings: admin writes" on public.private_settings for al
 -- ---------------------------------------------------------------- group classes
 create table if not exists public.classes (
   id uuid primary key default gen_random_uuid(),
-  subject text not null check (subject in ('maths','phys','chem')),
+  subject text not null check (subject in ('maths','phys','chem','life')),
   title text not null,
   starts_at timestamptz not null,
   minutes int not null default 90 check (minutes between 15 and 300),
@@ -150,7 +153,7 @@ create table if not exists public.bookings (
   learner_id uuid not null references public.profiles(id) on delete cascade,
   class_id uuid references public.classes(id) on delete set null,
   kind text not null default 'one-on-one' check (kind in ('one-on-one','group')),
-  subject text not null check (subject in ('maths','phys','chem')),
+  subject text not null check (subject in ('maths','phys','chem','life')),
   topics text default '',
   learner_note text default '',
   starts_at timestamptz not null,
@@ -225,7 +228,7 @@ begin
       if (select count(*) from public.bookings where learner_id = new.learner_id and status = 'pending' and starts_at > now()) >= 6 then
         raise exception 'You already have 6 requests waiting – wait for the tutor to answer them first.'; end if;
       select value into rates from public.public_settings where key = 'fees';
-      rate := coalesce((rates->>new.subject)::numeric, (rates->>'default')::numeric, 0);
+      rate := coalesce((rates->>new.subject)::numeric, (rates->>'default')::numeric, (rates->>'maths')::numeric, 0);
       new.fee := round(rate * hrs, 2); new.kind := 'one-on-one';
     end if;
   end if;
@@ -405,7 +408,7 @@ create table if not exists public.assignments (
   id uuid primary key default gen_random_uuid(),
   learner_id uuid not null references public.profiles(id) on delete cascade,
   tutor_id uuid not null references public.profiles(id) on delete cascade,
-  subject text not null check (subject in ('maths','phys','chem')),
+  subject text not null check (subject in ('maths','phys','chem','life')),
   hours numeric(6,1) not null default 0 check (hours >= 0 and hours <= 500),   -- hours allocated (0 = open)
   note text not null default '',                                              -- for the tutor
   active boolean not null default true,
@@ -489,6 +492,17 @@ language sql stable security definer set search_path = public as $$
     exists (select 1 from public.bookings b where b.learner_id = auth.uid() and b.tutor_id = p.id)
     or exists (select 1 from public.assignments a where a.learner_id = auth.uid() and a.tutor_id = p.id and a.active));
 $$;
+
+-- ---------------------------------------------------------------- Life Sciences (2026-10-27): widen the subject lists of existing databases
+alter table public.bookings drop constraint if exists bookings_subject_check;
+alter table public.bookings add constraint bookings_subject_check check (subject in ('maths','phys','chem','life'));
+alter table public.classes drop constraint if exists classes_subject_check;
+alter table public.classes add constraint classes_subject_check check (subject in ('maths','phys','chem','life'));
+alter table public.assignments drop constraint if exists assignments_subject_check;
+alter table public.assignments add constraint assignments_subject_check check (subject in ('maths','phys','chem','life'));
+-- Life Sciences lessons start at the Mathematics hourly fee until the admin sets their own
+update public.public_settings set value = value || jsonb_build_object('life', coalesce(value->'life', value->'maths', '250'::jsonb)), updated_at = now()
+ where key = 'fees' and not (value ? 'life');
 
 -- ---------------------------------------------------------------- function grants (least privilege)
 revoke execute on function public.guard_profile() from public, anon, authenticated;

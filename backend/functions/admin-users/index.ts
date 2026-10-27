@@ -1,7 +1,7 @@
 // Admin-only account tools.
 // POST { action: 'reset_password', user_id, password } | { action: 'delete', user_id }
 //      { action: 'create_account', role: 'tutor' | 'learner', email, password, full_name, phone,
-//        tutor: meet_link, tutor_rate, tutor_subjects · learner: school, approved }   → a login with a temporary password
+//        tutor: meet_link, tutor_rate, tutor_subjects · learner: school, grade, approved }   → a login with a temporary password
 // verify_jwt is off because the project uses publishable keys; the caller is checked below (must be the admin).
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,13 +34,14 @@ Deno.serve(async (req) => {
     const password = String(b.password || '');
     const meet_link = String(b.meet_link || '').trim().slice(0, 400);
     const tutor_rate = Math.max(0, Math.min(5000, Number(b.tutor_rate) || 0));
-    const tutor_subjects = String(b.tutor_subjects || '').split(',').filter((s) => ['maths', 'phys', 'chem'].includes(s)).join(',');
+    const tutor_subjects = String(b.tutor_subjects || '').split(',').filter((s) => ['maths', 'phys', 'chem', 'life'].includes(s)).join(',');
     const school = String(b.school || '').trim().slice(0, 120);
+    const grade = [10, 11, 12].includes(Number(b.grade)) ? Number(b.grade) : null;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return json({ error: 'Enter a valid e-mail address' }, 400);
     if (full_name.length < 2) return json({ error: 'Enter the name and surname' }, 400);
     if (password.length < 8) return json({ error: 'Use a temporary password of at least 8 characters' }, 400);
     if (meet_link && !/^https:\/\/\S{6,}$/.test(meet_link)) return json({ error: 'The meeting link must start with https://' }, 400);
-    const r = await fetch(URL_ + '/auth/v1/admin/users', { method: 'POST', headers: H, body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name, phone, school } }) });
+    const r = await fetch(URL_ + '/auth/v1/admin/users', { method: 'POST', headers: H, body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name, phone, school, ...(grade ? { grade: String(grade) } : {}) } }) });
     if (!r.ok) {
       const t = await r.text();
       if (r.status === 422 || /already|exists|registered/i.test(t)) return json({ error: role === 'tutor' ? 'That e-mail already has an account. Use another e-mail, or make that account a tutor from the Learners page.' : 'That e-mail already has an account – find the learner under Learners.' }, 409);
@@ -50,7 +51,7 @@ Deno.serve(async (req) => {
     const u = await r.json(); const id = u.id || (u.user && u.user.id);
     if (!UUID.test(String(id || ''))) return json({ error: 'Account created, but its id was not returned – refresh the page' }, 500);
     // the sign-up trigger made a learner profile: set it up (the service key may change role and approval)
-    const patch = role === 'tutor' ? { role, approved: true, must_change_password: true, full_name, phone, meet_link, tutor_rate, tutor_subjects } : { approved: b.approved !== false, must_change_password: true, full_name, phone, school };
+    const patch = role === 'tutor' ? { role, approved: true, must_change_password: true, full_name, phone, meet_link, tutor_rate, tutor_subjects } : { approved: b.approved !== false, must_change_password: true, full_name, phone, school, grade };
     const p = await fetch(URL_ + '/rest/v1/profiles?id=eq.' + id, { method: 'PATCH', headers: SH({ 'Content-Type': 'application/json', Prefer: 'return=representation' }), body: JSON.stringify(patch) });
     const rows = p.ok ? await p.json() : [];
     if (!rows[0]) return json({ error: 'Account created, but its profile could not be set up – refresh and check the Learners page' }, 500);

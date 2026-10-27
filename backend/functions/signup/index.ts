@@ -1,5 +1,5 @@
 // Creates a learner account (already confirmed, so no confirmation e-mail is needed).
-// POST { email, password, full_name, phone, school, guardian_phone, website(honeypot) }
+// POST { email, password, full_name, phone, school, grade, guardian_phone, website(honeypot) }
 // Public on purpose (verify_jwt off): new learners have no session yet. Input is validated here.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Use POST' }, 405);
-  let b: Record<string, string> = {};
+  let b: Record<string, unknown> = {};
   try { b = await req.json(); } catch { return json({ error: 'Invalid request' }, 400); }
   if (b.website) return json({ ok: true }); // honeypot filled in by a bot
   const email = String(b.email || '').trim().toLowerCase();
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     headers: SH({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       email, password, email_confirm: true,
-      user_metadata: { full_name, phone, school: String(b.school || '').slice(0, 80), guardian_phone: String(b.guardian_phone || '').slice(0, 20) },
+      user_metadata: { full_name, phone, school: String(b.school || '').slice(0, 80), guardian_phone: String(b.guardian_phone || '').slice(0, 20), ...([10, 11, 12].includes(Number(b.grade)) ? { grade: String(Number(b.grade)) } : {}) },
     }),
   });
   if (!r.ok) {

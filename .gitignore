@@ -5,8 +5,12 @@ public/
 node_modules/
 # plain study material is never committed (it ships only encrypted in site/content.bin)
 maths_*.js
+maths1*.js
 physics.js
 chem.js
+phys1*.js
+chem1*.js
+life*.js
 practice_*.js
 figs_*.js
 bundle.json

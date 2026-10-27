@@ -152,6 +152,24 @@ self.addEventListener('notificationclick', (e) => {
 });
 ''' % {'b': BUILD, 'shell': json.dumps(shell)}
 wr('sw.js', sw)
+
+# ---- Azure Static Web Apps settings (used when the site is served from its own Adventuity address; GitHub Pages ignores this file)
+swa = {
+  "globalHeaders": {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin", "X-Frame-Options": "SAMEORIGIN",
+                    "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "Strict-Transport-Security": "max-age=31536000; includeSubDomains"},
+  "routes": [
+    {"route": "/sw.js", "headers": {"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"}},
+    {"route": "/portal.html", "headers": {"Cache-Control": "no-cache", "X-Robots-Tag": "noindex"}},
+    {"route": "/config.js", "headers": {"Cache-Control": "no-cache"}},
+    {"route": "/content.bin", "headers": {"Cache-Control": "no-cache"}},
+    {"route": "/assets/*", "headers": {"Cache-Control": "public, max-age=86400"}},
+    {"route": "/icons/*", "headers": {"Cache-Control": "public, max-age=604800"}}
+  ],
+  "responseOverrides": {"404": {"rewrite": "/404.html", "statusCode": 404}},
+  "mimeTypes": {".bin": "application/octet-stream", ".json": "application/json", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".txt": "text/plain"},
+  "trailingSlash": "auto"
+}
+wr('staticwebapp.config.json', json.dumps(swa, indent=1))
 for f in os.listdir(os.path.join(D, 'brand', 'icons')):
     shutil.copy(os.path.join(D, 'brand', 'icons', f), os.path.join(OUT, 'icons', f))
 open(os.path.join(OUT, '.nojekyll'), 'w').write('')

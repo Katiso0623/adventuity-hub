@@ -115,8 +115,50 @@
     return out + '</svg>';
   }
 
+  /* ---------- 3. data tables: { kind: "table", head: ["Temp (°C)", "Rate"], rows: [["10", "2"], ...], note: "..." } */
+  function table(spec) {
+    const cell = (v, tag) => '<' + tag + '>' + esc(v) + '</' + tag + '>';
+    const head = (spec.head || []).length ? '<thead><tr>' + spec.head.map((h) => cell(h, 'th')).join('') + '</tr></thead>' : '';
+    const body = '<tbody>' + (spec.rows || []).map((r) => '<tr>' + (Array.isArray(r) ? r : [r]).map((v, i) => cell(v, i === 0 && spec.rowHead ? 'th' : 'td')).join('') + '</tr>').join('') + '</tbody>';
+    return '<div class="fig-table"><table>' + (spec.title ? '<caption>' + esc(spec.title) + '</caption>' : '') + head + body + '</table></div>';
+  }
+
+  /* ---------- 4. schematic drawings (biology, apparatus): a whitelisted element tree, no raw markup
+     { kind: "svg", view: [0, 0, 400, 260], els: [ ["ellipse", { cx: 200, cy: 130, rx: 150, ry: 90, class: "fa" }],
+       ["path", { d: "M10 10 C 40 0, 60 30, 90 20", class: "line" }], ["text", { x: 20, y: 30 }, "Nucleus"],
+       ["g", { transform: "translate(10 0)" }, [ ...children ]] ] }                                                   */
+  const SVG_TAGS = new Set(['g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon', 'text']);
+  const SVG_ATTR = new Set(['d', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'points', 'transform', 'class',
+    'stroke-dasharray', 'stroke-width', 'font-size', 'text-anchor', 'font-weight', 'font-style', 'opacity', 'fill-opacity', 'arrow', 'dominant-baseline']);
+  const SVG_CLASSES = /^(line|thin|thick|dashed|lbl|lbl-s|lbl-i|fa|fb|fc|fd|fe|ff|ink|soft|none|dot|arrow|c0|c1|c2|c3|shade)( (line|thin|thick|dashed|lbl|lbl-s|lbl-i|fa|fb|fc|fd|fe|ff|ink|soft|none|dot|arrow|c0|c1|c2|c3|shade))*$/;
+  function svgEl(el, depth) {
+    if (!Array.isArray(el) || depth > 8) return '';
+    const tag = String(el[0]); if (!SVG_TAGS.has(tag)) return '';
+    const at = (el[1] && typeof el[1] === 'object' && !Array.isArray(el[1])) ? el[1] : {};
+    let attrs = '';
+    Object.keys(at).forEach((k) => {
+      if (!SVG_ATTR.has(k)) return; let v = String(at[k]);
+      if (k === 'class' && !SVG_CLASSES.test(v)) return;
+      if (k === 'arrow') { if (v === 'end' || v === 'true') attrs += ' marker-end="url(#arr)"'; else if (v === 'both') attrs += ' marker-start="url(#arrs)" marker-end="url(#arr)"'; return; }
+      if (k === 'd' || k === 'points' || k === 'transform') { if (!/^[-0-9.,\s a-zA-Z()]*$/.test(v) || /script|url|expression/i.test(v)) return; }
+      else if (!/^[-0-9.a-zA-Z %#,]*$/.test(v)) return;
+      attrs += ' ' + k + '="' + esc(v) + '"';
+    });
+    if (!at.class && tag !== 'g' && tag !== 'text') attrs += ' class="line"';
+    if (tag === 'text') { if (!at.class) attrs += ' class="lbl"'; return '<text' + attrs + '>' + esc(el.slice(at === el[1] ? 2 : 1).filter((x) => typeof x === 'string' || typeof x === 'number').join('')) + '</text>'; }
+    const kids = el.slice(at === el[1] ? 2 : 1).find((x) => Array.isArray(x) && Array.isArray(x[0]));
+    if (tag === 'g') return '<g' + attrs + '>' + (kids || []).map((c) => svgEl(c, depth + 1)).join('') + '</g>';
+    return '<' + tag + attrs + '/>';
+  }
+  function drawing(spec) {
+    const v = (spec.view || [0, 0, 400, 260]).map(num); if (v.length !== 4 || v.some((x) => !isFinite(x))) throw new Error('bad view');
+    return '<svg class="fig bio" viewBox="' + v.join(' ') + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(spec.alt || spec.caption || 'Diagram') + '">' +
+      '<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker><marker id="arrs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs>' +
+      (spec.els || []).map((e) => svgEl(e, 0)).join('') + '</svg>';
+  }
+
   window.renderFig = function (spec) {
-    try { if (!spec || typeof spec !== 'object') return ''; if (spec.kind === 'plot') return plot(spec); if (spec.kind === 'geo') return geo(spec); return ''; }
+    try { if (!spec || typeof spec !== 'object') return ''; if (spec.kind === 'plot') return plot(spec); if (spec.kind === 'geo') return geo(spec); if (spec.kind === 'table') return table(spec); if (spec.kind === 'svg') return drawing(spec); return ''; }
     catch (e) { return '<p class="small muted">(figure could not be drawn: ' + esc(e.message) + ')</p>'; }
   };
   window.__figCompile = compile;

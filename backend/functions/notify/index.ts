@@ -17,7 +17,7 @@ const SECRET: string = (() => { try { const k = JSON.parse(Deno.env.get('SUPABAS
 // new sb_secret_ keys go on the apikey header only; legacy service_role JWTs also as Bearer
 const SH = (extra: Record<string, string> = {}): Record<string, string> => (SECRET.startsWith('sb_') ? { apikey: SECRET, ...extra } : { apikey: SECRET, Authorization: 'Bearer ' + SECRET, ...extra });
 const admin = (path: string, init: RequestInit = {}) => fetch(URL_ + path, { ...init, headers: SH({ 'Content-Type': 'application/json', ...((init.headers as Record<string, string>) || {}) }) });
-const SUBJ: Record<string, string> = { maths: 'Mathematics', phys: 'Physics', chem: 'Chemistry' };
+const SUBJ: Record<string, string> = { maths: 'Mathematics', phys: 'Physics', chem: 'Chemistry', life: 'Life Sciences' };
 const when = (iso: string) => new Intl.DateTimeFormat('en-ZA', { timeZone: 'Africa/Johannesburg', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 
 Deno.serve(async (req) => {
