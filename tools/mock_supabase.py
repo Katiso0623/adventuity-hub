@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qsl, unquote
 ap = argparse.ArgumentParser(); ap.add_argument('--port', type=int, default=54321); ap.add_argument('--db'); ap.add_argument('--pghost'); ap.add_argument('--pgport', default='5499'); ap.add_argument('--site'); ap.add_argument('--config', default='')
 A = ap.parse_args()
 LOG = []; LOCK = threading.Lock()
-SETOF = {'busy_slots', 'class_seats', 'tutor_lessons', 'tutor_learners', 'my_tutors'}
+SETOF = {'busy_slots', 'class_seats', 'tutor_lessons', 'tutor_learners', 'my_tutors', 'tutor_schedule'}
 EMBED = {('bookings', 'profiles'): ('profiles', 'id', 'learner_id'), ('bookings', 'classes'): ('classes', 'id', 'class_id')}
 IDENT = re.compile(r'^[a-z_][a-z0-9_]*$')
 
@@ -120,7 +120,7 @@ class H(SimpleHTTPRequestHandler):
             msg = str(e); code = 403 if 'row-level security' in msg else 400
             return self.reply(code, {'message': msg, 'code': '42501' if code == 403 else 'P0001'})
     def rpc(self, name):
-        args = json.loads(self.body() or b'{}'); a = ', '.join('%s := %s' % (k, lit(v)) for k, v in args.items() if IDENT.match(k))
+        args = json.loads(self.body() or b'{}'); a = ', '.join('%s := %s' % (k, lit(json.dumps(v) if isinstance(v, (list, dict)) else v)) for k, v in args.items() if IDENT.match(k))
         if name in SETOF: out = run('select coalesce(json_agg(t), \'[]\') from public.%s(%s) t' % (name, a), self.uid()); return self.reply(200, raw=out.encode())
         out = run('select to_json(public.%s(%s))' % (name, a), self.uid()); return self.reply(200, raw=(out or 'null').encode())
     def auth(self, method, path, q):
@@ -155,7 +155,23 @@ class H(SimpleHTTPRequestHandler):
         if name == 'notify': return self.reply(200, {'sent': 0, 'devices': 0})
         if name == 'admin-users':
             role = run("select role from public.profiles where id = %s" % lit(uid or '00000000-0000-0000-0000-000000000000'), 'service')
-            if role != 'admin': return self.reply(403, {'error': 'Only the tutor can do this'})
+            if role == 'tutor':   # mirrors the tutor rules in backend/functions/admin-users
+                if b.get('action') == 'create_account':
+                    subs = [x for x in (b.get('subjects') or []) if x in ('maths', 'phys', 'chem', 'life')]
+                    if not subs: return self.reply(400, {'error': 'Choose the subject(s) you will teach this learner'})
+                    if run('select 1 from auth.users where lower(email) = lower(%s)' % lit(b.get('email')), 'service'): return self.reply(409, {'error': 'That e-mail already has an account – ask the director to assign this learner to you.'})
+                    meta = {'full_name': b.get('full_name', ''), 'phone': b.get('phone', ''), 'school': b.get('school', ''), 'pw': b['password']}
+                    nid = run('insert into auth.users (email, raw_user_meta_data) values (%s, %s::jsonb) returning id' % (lit(b['email'].lower()), lit(json.dumps(meta))), 'service').splitlines()[0]
+                    run("update public.profiles set approved = true, must_change_password = true, guardian_phone = %s, grade = %s, created_by = %s where id = %s" % (lit(b.get('guardian_phone', '')), int(b['grade']) if str(b.get('grade') or '') in ('10', '11', '12') else 'null', lit(uid), lit(nid)), 'service')
+                    run('insert into public.assignments (learner_id, tutor_id, subject) values ' + ', '.join('(%s, %s, %s)' % (lit(nid), lit(uid), lit(x)) for x in subs) + ' on conflict do nothing', 'service')
+                    return self.reply(200, {'ok': True, 'user_id': nid, 'subjects': subs})
+                if b.get('action') == 'reset_password':
+                    ok = run("select 1 from public.profiles p where p.id = %s and p.role = 'learner' and p.created_by = %s and p.must_change_password and exists (select 1 from public.assignments a where a.learner_id = p.id and a.tutor_id = %s and a.active)" % (lit(b['user_id']), lit(uid), lit(uid)), 'service')
+                    if not ok: return self.reply(403, {'error': 'Ask the director to reset this password'})
+                    run("update auth.users set raw_user_meta_data = raw_user_meta_data || jsonb_build_object('pw', %s) where id = %s" % (lit(b['password']), lit(b['user_id'])), 'service')
+                    return self.reply(200, {'ok': True})
+                return self.reply(403, {'error': 'Only the director can do this'})
+            if role != 'admin': return self.reply(403, {'error': 'Only the director can do this'})
             if b.get('action') == 'create_account':
                 if run('select 1 from auth.users where lower(email) = lower(%s)' % lit(b.get('email')), 'service'): return self.reply(409, {'error': 'That e-mail already has an account.'})
                 meta = {'full_name': b.get('full_name', ''), 'phone': b.get('phone', ''), 'school': b.get('school', ''), 'pw': b['password']}

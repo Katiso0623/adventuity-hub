@@ -67,10 +67,19 @@ Deno.serve(async (req) => {
         if (t[0] && t[0].role === 'tutor') tutorId = t[0].id;
       }
       if (isItsTutor) {
-        if (event !== 'delivered') return json({ sent: 0 });
+        if (event !== 'delivered' && event !== 'scheduled') return json({ sent: 0 });
         const admins = await (await admin('/rest/v1/profiles?select=id&role=eq.admin')).json();
         recipients = admins.map((a: { id: string }) => a.id);
-        title = 'Lesson delivered · ' + (caller.full_name || 'tutor'); body = who + ' – ' + what + (b.tutor_note ? ' – ' + String(b.tutor_note).slice(0, 100) : '');
+        if (event === 'scheduled') {
+          // only straight after booking, and the count comes from the database (not from the request)
+          if (b.status !== 'accepted' || Date.now() - new Date(b.created_at).getTime() > 3 * 60e3) return json({ sent: 0 });
+          const since = new Date(new Date(b.created_at).getTime() - 60e3).toISOString();
+          const batch = await (await admin('/rest/v1/bookings?select=id&status=eq.accepted&tutor_id=eq.' + user.id + '&learner_id=eq.' + b.learner_id + '&created_at=gte.' + since)).json();
+          const k = Array.isArray(batch) ? Math.max(1, batch.length) : 1; const more = k > 1 ? ' (+' + (k - 1) + ' more)' : '';
+          const tname = String(caller.full_name || 'your tutor').slice(0, 60);
+          title = tname + ' scheduled ' + (k > 1 ? k + ' lessons' : 'a lesson'); body = who + ' – ' + what + more;
+          extra.push({ to: [b.learner_id], title: k > 1 ? k + ' lessons booked ✔' : 'Lesson booked ✔', body: what + more + ' with ' + tname, url: 'portal.html#lessons' });
+        } else { title = 'Lesson delivered · ' + (caller.full_name || 'tutor'); body = who + ' – ' + what + (b.tutor_note ? ' – ' + String(b.tutor_note).slice(0, 100) : ''); }
       } else if (['requested', 'cancelled', 'pop'].includes(event)) {
         const admins = await (await admin('/rest/v1/profiles?select=id&role=eq.admin')).json();
         recipients = admins.map((a: { id: string }) => a.id);

@@ -173,3 +173,23 @@ details.card>summary::-webkit-details-marker{display:none}
 .lesson-timer svg{width:16px;height:16px}
 .lesson-timer.live{background:var(--good-soft);color:var(--good)}.lesson-timer.warn{background:var(--warn-soft);color:var(--warn)}.lesson-timer.over{background:var(--bad-soft);color:var(--bad)}
 .wb-timer .lesson-timer{font-size:.8rem;padding:4px 10px}
+/* several days and times at once (director and tutors) */
+.slots{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface-2)}
+.slot-row{display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(190px,1fr) minmax(110px,.8fr) 92px;gap:10px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.slot-x{display:flex;gap:6px;align-items:center;min-height:42px}
+.slot-sum{margin:0}.slot-warn{display:block;margin-top:6px;padding:6px 10px;border-radius:var(--r-sm);background:var(--warn-soft);color:var(--warn);font-weight:600;font-size:.88rem}
+.slot-warn svg{width:15px;height:15px;vertical-align:-3px}
+.hours-panel{display:grid;gap:8px}.hours-panel .cd{padding:10px 12px}
+@media (max-width:720px){.slot-row{grid-template-columns:1fr auto}.slot-row .field:nth-child(-n+2){grid-column:1/-1}.slot-x{justify-content:flex-end}}
+/* Analysis (director only) */
+.an-wrap{overflow-x:auto;margin-top:8px;-webkit-overflow-scrolling:touch}
+.an-table{width:100%;border-collapse:collapse;font-size:.88rem;min-width:560px}
+.an-table th,.an-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;vertical-align:middle}
+.an-table thead th{background:var(--surface-2);font-weight:600;font-size:.8rem;color:var(--ink-2);white-space:nowrap}
+.an-table th:first-child,.an-table td.left,.an-table td.name{text-align:left}.an-table td.name{font-weight:600;color:var(--ink)}
+.an-table td:nth-child(2){text-align:left}
+.an-flags{border-color:var(--warn)}.an-flags ul{margin:8px 0 0;padding-left:18px;display:grid;gap:6px}
+.sp-card{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;margin-top:10px}
+.inv-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.inv-row:last-child{border-bottom:0}.inv-row.new{background:var(--good-soft);border-radius:var(--r-sm);padding:10px}
+.kpi .small{display:block;margin-top:2px}

@@ -8,7 +8,7 @@
 
   ADV.tutorInit = async function () { await loadMyLearners(); if (ADV.startPolling) ADV.startPolling(); };
   async function loadMyLearners() { try { state.myLearners = (await sb.rpc('tutor_learners', {})) || []; } catch (e) { state.myLearners = state.myLearners || []; } }
-  const reload = async () => { await ADV.loadBookings(); await loadMyLearners(); const y = window.scrollY; ADV.render(); window.scrollTo(0, y); };
+  const reload = ADV.tutorReload = async () => { await ADV.loadBookings(); await loadMyLearners(); const y = window.scrollY; ADV.render(); window.scrollTo(0, y); };
   const upcoming = () => state.bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) > now()).sort(byStart);
   const toLog = () => state.bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) <= now() && !b.delivered_at).sort(byStart);
   /* the tutor's default Meet link: saved on the profile and used for upcoming lessons that had no link of their own */
@@ -62,10 +62,11 @@
     return '<div class="stack"><div><span class="eyebrow">Tutor portal</span><h1>' + (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + esc(first) : '') + '</h1><p class="muted small" style="margin-top:4px">Your lessons and learners. At lesson time, tap Join, then present the Board in Google Meet.</p></div>' +
       (p.meet_link ? '' : '<form id="f-tmeet" class="card stack"><div class="row" style="flex-wrap:nowrap;align-items:flex-start">' + ICON.video + '<div><b>Add your Google Meet link</b><p class="small muted">Lessons the director gives you use your own Meet link, so you are the host and can let the learner in. On meet.google.com click <b>New meeting → Create a meeting for later</b>, copy the link and paste it here. You can reuse the same link for every lesson.</p></div></div><div class="row" style="flex-wrap:nowrap"><input id="tm-link" type="url" placeholder="https://meet.google.com/abc-defg-hij" aria-label="Google Meet link" required><button class="btn primary" type="submit">Save</button></div></form>') +
       '<div class="grid cols-4">' + kpi('Lessons in 7 days', week, 'tlessons') + kpi('Hours taught this month', (Math.round(hrs * 10) / 10).toString().replace('.', ','), 'tlessons') + kpi('My learners', new Set((state.myLearners || []).map((l) => l.learner_id)).size, 'tlearners') + kpi('Lessons to log', logs.length, 'tlessons') + '</div>' +
-      '<h2>' + (next && ADV.joinWindow(next).open ? 'Now' : 'Next lesson') + '</h2>' + (next ? card(next, true) : '<div class="card"><p class="muted">No lessons scheduled yet. The director assigns your lessons and sends you the times on WhatsApp – they show up here.</p></div>') +
+      '<div class="row"><button class="btn primary" data-go="tab" data-id="tsched">' + ICON.cal + 'Schedule lessons</button><button class="btn" data-action="ta-open-l">' + ICON.plus + 'Add a learner</button></div>' +
+      '<h2>' + (next && ADV.joinWindow(next).open ? 'Now' : 'Next lesson') + '</h2>' + (next ? card(next, true) : '<div class="card"><p class="muted">No lessons scheduled yet. Book the times you agreed with your learners under Schedule – or the director adds them – and they show up here.</p></div>') +
       (logs.length ? '<h2>Log these lessons</h2><p class="small muted" style="margin-top:-6px">Mark each lesson as delivered and note what you covered – the director uses this for reports and your pay.</p>' + logs.map((b) => card(b)).join('') : '') +
       (up.length > 1 ? '<h2>Coming up</h2>' + up.slice(1, 6).map((b) => card(b)).join('') + (up.length > 6 ? '<button class="btn" data-go="tab" data-id="tlessons">All ' + up.length + ' upcoming lessons</button>' : '') : '') +
-      '<details class="card"><summary><b>How a lesson works</b></summary><ol class="wb-help" style="margin-top:10px"><li>The director schedules the lesson here and sends you and the learner the time on WhatsApp.</li><li>15 minutes before the start, open <b>Today</b> and tap <b>Join the lesson</b>. Google Meet opens – let the learner in when they ask to join.</li><li>Open the <b>Board</b> in this portal and, in Meet, click <b>Present now → A tab</b> and choose the Adventuity tab. Write and draw – the learner sees it live. Use the notes under Maths and Sciences (Teach mode and the pen work there too).</li><li>After the lesson, tap <b>Lesson delivered</b> and write a line about what you covered.</li></ol></details>' +
+      '<details class="card"><summary><b>How a lesson works</b></summary><ol class="wb-help" style="margin-top:10px"><li>You (under <b>Schedule</b>) or the director book the lesson; the learner sees it in their portal and you send the times on WhatsApp.</li><li>15 minutes before the start, open <b>Today</b> and tap <b>Join the lesson</b>. Google Meet opens – let the learner in when they ask to join.</li><li>Open the <b>Board</b> in this portal and, in Meet, click <b>Present now → A tab</b> and choose the Adventuity tab. Write and draw – the learner sees it live. Use the notes under Maths and Sciences (Teach mode and the pen work there too).</li><li>After the lesson, tap <b>Lesson delivered</b> and write a line about what you covered.</li></ol></details>' +
       (ADV.pushCard ? ADV.pushCard('Get an alert on this device when a lesson is assigned to you or changes.') : '') + '</div>';
   };
 
@@ -84,15 +85,23 @@
     const items = list.map((l) => {
       const bs = state.bookings.filter((b) => b.learner_id === l.learner_id && b.subject === l.subject);
       const next = bs.filter((b) => b.status === 'accepted' && new Date(b.ends_at) > now()).sort(byStart)[0];
-      const h = Number(l.hours) || 0, done = Number(l.taught) || 0; const pct = h ? Math.min(100, Math.round(done / h * 100)) : 0;
-      return '<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="min-width:0"><div class="row" style="gap:6px">' + pill(l.subject, SUBJ[l.subject].short) + (h ? pill(done >= h ? 'good' : '', String(done).replace('.', ',') + ' of ' + String(h).replace('.', ',') + ' h taught') : pill('', String(done).replace('.', ',') + ' h taught')) + '</div><h3 style="margin-top:6px">' + esc(l.full_name || 'Learner') + '</h3>' + (l.school ? '<p class="small muted">' + esc(l.school) + '</p>' : '') + '</div></div>' +
+      const h = Number(l.hours) || 0, done = Number(l.taught) || 0, booked = Number(l.booked) || 0; const pct = h ? Math.min(100, Math.round(done / h * 100)) : 0;
+      const over = h && done + booked > h + 0.01;
+      return '<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="min-width:0"><div class="row" style="gap:6px">' + pill(l.subject, SUBJ[l.subject].short) + (h ? pill(done >= h ? 'good' : '', String(done).replace('.', ',') + ' of ' + String(h).replace('.', ',') + ' h taught') : pill('', String(done).replace('.', ',') + ' h taught')) + (booked ? pill('', String(booked).replace('.', ',') + ' h booked') : '') + (over ? pill('warn', 'Over the allocated hours') : '') + (l.first_login_pending ? pill('warn', 'Has not signed in yet') : '') + '</div><h3 style="margin-top:6px">' + esc(l.full_name || 'Learner') + '</h3>' + (l.school ? '<p class="small muted">' + esc(l.school) + (l.grade ? ' · Grade ' + esc(l.grade) : '') + '</p>' : '') +
+        (l.added_by_me ? '<p class="small muted">' + esc([l.email, l.phone].filter(Boolean).join(' · ')) + '</p>' : '') + '</div></div>' +
         (h ? '<div class="bar" style="margin-top:10px" aria-label="' + pct + '% of the allocated hours"><i style="width:' + pct + '%"></i></div>' : '') +
         (l.note ? '<p class="tutor-msg"><b>From the director:</b> ' + esc(l.note) + '</p>' : '') +
-        '<p class="small" style="margin-top:8px">' + (next ? ICON.cal + ' Next lesson: <b>' + esc(fmt.long(next.starts_at)) + ' ' + esc(fmt.time(next.starts_at)) + '</b>' : '<span class="muted">No lesson scheduled yet – the director will add one.</span>') + '</p></div>';
+        '<p class="small" style="margin-top:8px">' + (next ? ICON.cal + ' Next lesson: <b>' + esc(fmt.long(next.starts_at)) + ' ' + esc(fmt.time(next.starts_at)) + '</b>' : '<span class="muted">No lesson scheduled yet.</span>') + '</p>' +
+        '<div class="row" style="margin-top:10px"><button class="btn sm primary" data-action="ts-go" data-key="' + esc(l.learner_id + '|' + l.subject) + '">' + ICON.cal + 'Schedule lessons</button>' +
+        (l.added_by_me && l.phone ? '<a class="btn sm" href="' + esc(ADV.wa(l.phone)) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+        (l.added_by_me && l.first_login_pending ? '<button class="btn sm ghost" data-action="t-pass" data-id="' + l.learner_id + '">New temporary password</button>' : '') + '</div></div>';
     }).join('');
-    return '<div class="stack"><div><span class="eyebrow">Learners</span><h1>My learners</h1><p class="small muted">The learners the director assigned to you, per subject. Contact details stay with the director – message Adventuity if you need anything arranged.</p></div>' +
-      (items || '<div class="card"><p class="muted">No learners assigned yet.</p></div>') + '</div>';
+    return '<div class="stack"><div><span class="eyebrow">Learners</span><h1>My learners</h1><p class="small muted">Learners you added and learners the director assigned to you, per subject. Contact details of the director\'s learners stay with the director – they get your lessons in their portal and a notification.</p></div>' +
+      (ADV.tutorCredsCard ? ADV.tutorCredsCard() : '') + (ADV.tutorAddForm ? ADV.tutorAddForm() : '') +
+      (state.taForm ? '' : '<div class="row"><button class="btn primary" data-action="ta-open">' + ICON.plus + 'Add a learner</button></div>') +
+      (items || '<div class="card"><p class="muted">No learners yet. Add a learner you teach, or the director assigns one to you.</p></div>') + '</div>';
   };
+  ADV.actions['ta-open-l'] = () => { state.taForm = {}; state.tCreds = null; ADV.go('tlearners'); const el = $('#ta-name'); if (el) el.focus(); };
 
   /* ---------------------------------------------------------------- actions */
   ADV.actions['t-filter'] = (a) => { state.tFilter = a.dataset.id; ADV.render(); };

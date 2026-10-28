@@ -86,10 +86,11 @@ css = ':root{--mark-mask:url(data:image/png;base64,' + mark + ')}\n' + theme + '
 wr('assets/app.css', css)
 
 # ---- scripts
-for f in ['sbmini.js', 'steps.js', 'figlib.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'portal_tutor.js', 'portal_board.js']:
+for f in ['sbmini.js', 'steps.js', 'figlib.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'portal_tutor.js', 'portal_sched.js', 'portal_analysis.js', 'portal_board.js']:
     shutil.copy(os.path.join(D, f), os.path.join(OUT, 'assets', f))
 wr('assets/mj-config.js', 'window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],displayMath:[["\\\\[","\\\\]"]]},svg:{fontCache:"global"},options:{enableMenu:false},startup:{typeset:false,ready:function(){MathJax.startup.defaultReady();MathJax.startup.promise.then(function(){if(window.__onMathJaxReady)window.__onMathJaxReady();});}}};\n')
 wr('assets/boot.js', 'window.ADV.boot();\n')
+shutil.copy(os.path.join(D, 'brand', 'invoice_logo.png'), os.path.join(OUT, 'assets', 'invoice-logo.png'))   # printed on sponsor invoices
 site_url = cfg.get('siteUrl') or backend.get('site_url') or 'https://katiso0623.github.io/adventuity-hub/'
 config = {'supabaseUrl': backend.get('supabaseUrl', ''), 'supabaseKey': backend.get('supabaseKey', ''), 'vapidPublic': backend['vapid_public'], 'contentVersion': content_version, 'siteUrl': site_url, 'exams': cfg['exams']}
 wr('config.js', '/* Public settings for the Adventuity portal (no secrets here: the anon key is public by design; row-level security protects the data). */\nwindow.ADV_CONFIG = ' + json.dumps(config, indent=1, ensure_ascii=False) + ';\n')
@@ -137,6 +138,8 @@ portal = '''<!doctype html>
 <script src="assets/portal_study.js%(v)s"></script>
 <script src="assets/portal_admin.js%(v)s"></script>
 <script src="assets/portal_tutor.js%(v)s"></script>
+<script src="assets/portal_sched.js%(v)s"></script>
+<script src="assets/portal_analysis.js%(v)s"></script>
 <script src="assets/portal_board.js%(v)s"></script>
 <script src="assets/boot.js%(v)s"></script>
 </body>
@@ -150,7 +153,7 @@ manifest = {"name": "Adventuity – Grade 12 lessons", "short_name": "Adventuity
             "icons": [{"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"}, {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
             "shortcuts": [{"name": "Book a lesson", "url": "./portal.html#book"}, {"name": "My lessons", "url": "./portal.html#lessons"}, {"name": "Messages", "url": "./portal.html#messages"}]}
 json.dump(manifest, open(os.path.join(OUT, 'manifest.webmanifest'), 'w'), indent=2)
-shell = ['./portal.html', './config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'] + ['./assets/' + f + v for f in ['app.css', 'mj-config.js', 'sbmini.js', 'steps.js', 'figlib.js', 'outline.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'portal_tutor.js', 'portal_board.js', 'boot.js']]
+shell = ['./portal.html', './config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'] + ['./assets/' + f + v for f in ['app.css', 'mj-config.js', 'sbmini.js', 'steps.js', 'figlib.js', 'outline.js', 'portal_core.js', 'portal_msgs.js', 'portal_study.js', 'portal_admin.js', 'portal_tutor.js', 'portal_sched.js', 'portal_analysis.js', 'portal_board.js', 'boot.js']]
 sw = '''/* Adventuity service worker: offline app shell, encrypted notes cache, push notifications. */
 const CACHE = 'adv-%(b)s';
 const SHELL = %(shell)s;

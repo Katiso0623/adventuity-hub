@@ -230,17 +230,21 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await A.page.click('[data-action="sched-go"][data-tutor]'); await A.page.waitForSelector('#f-sched');
   await A.page.selectOption('#sc-learner', thaboId); await A.page.waitForTimeout(300);
   ok((await A.page.$eval('#sc-tutor', (e) => e.options[e.selectedIndex].text)) === 'Patience Mazibuko', 'assigned tutor preselected for the learner');
-  await A.page.click('[data-action="sc-quick"][data-m="0"]');   // "Now": a lesson agreed on WhatsApp that starts straight away
-  const picked = await A.page.evaluate(() => ({ d: document.querySelector('#sc-date').value, t: document.querySelector('#sc-time-h').value + ':' + document.querySelector('#sc-time-m').value, today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date()) }));
+  await A.page.click('[data-action="slot-now"][data-p="sc"]');   // "Now": a lesson agreed on WhatsApp that starts straight away
+  const picked = await A.page.evaluate(() => { const r = document.querySelector('#sc-slots .slot-row'); const sel = r.querySelectorAll('select'); return { d: sel[0].value, t: sel[1].value + ':' + sel[2].value, today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date()) }; });
   ok(picked.d === picked.today && /^\d\d:\d\d$/.test(picked.t), 'Now fills in today and the current time: ' + picked.d + ' ' + picked.t);
-  await A.page.selectOption('#sc-rep', '2'); await A.page.fill('#sc-msg', 'Exam prep for Paper 1');
+  await A.page.selectOption('#sc-rep', '2'); await A.page.fill('#sc-msg', 'Exam prep for Paper 1'); await A.page.waitForTimeout(200);
+  ok(/2 lessons/.test(await A.page.textContent('#sc-sum')), 'summary counts the weekly repeat: ' + (await A.page.textContent('#sc-sum')).slice(0, 60));
   await A.page.click('#f-sched button[type=submit]');
   await A.page.waitForSelector('text=Scheduled ✔');
   ok(await A.page.isVisible('text=WhatsApp Patience (tutor)'), 'WhatsApp buttons for the tutor and the learner');
-  const twa = decodeURIComponent(await A.page.getAttribute('a:has-text("WhatsApp Patience (tutor)")', 'href')); ok(/Thabo Mokoena – Maths/.test(twa) && /Join the lesson/.test(twa), 'tutor message lists the lessons');
+  const twa = decodeURIComponent(await A.page.getAttribute('a:has-text("WhatsApp Patience (tutor)")', 'href')); ok(/Thabo Mokoena – Maths/.test(twa) && /Join the lesson/.test(twa) && (twa.match(/• /g) || []).length === 2, 'tutor message lists both lessons');
   await shot(A.page, '22-admin-scheduled', true);
-  const dateLabel = await A.page.$eval('#sc-date', (e) => e.options[e.selectedIndex].text); ok(/^((Today|Tomorrow) · )?[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}( 20\d\d)?$/.test(dateLabel), 'date shown the South African way: ' + dateLabel);
-  ok(await A.page.$$eval('#sc-time-h option', (o) => o.length) === 24, '24-hour clock for the start time');
+  const dateLabel = await A.page.$eval('#sc-slots .slot-row select', (e) => e.options[e.selectedIndex].text); ok(/^((Today|Tomorrow) · )?[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}( 20\d\d)?$/.test(dateLabel), 'date shown the South African way: ' + dateLabel);
+  ok(await A.page.$$eval('#sc-slots .slot-row select[id$="-h"] option', (o) => o.length) === 24, '24-hour clock for the start time');
+  // several days at once from the director's form: add a day, remove it again
+  await A.page.click('[data-action="slot-add"][data-p="sc"]'); ok(await A.page.$$eval('#sc-slots .slot-row', (r) => r.length) === 2, 'director adds a second day');
+  await A.page.click('[data-action="slot-del"][data-p="sc"] >> nth=1'); ok(await A.page.$$eval('#sc-slots .slot-row', (r) => r.length) === 1, 'and removes it');
 
   step = 'tutor-login';
   const P = await mk('tutor');
@@ -312,11 +316,80 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await PL.page.waitForSelector('#f-newpass'); await PL.page.fill('#np-1', 'priscilla-pass1'); await PL.page.fill('#np-2', 'priscilla-pass1'); await PL.page.click('#f-newpass button[type=submit]'); await PL.page.waitForSelector('text=Hi Priscilla').catch(async (e) => { await shot(PL.page, 'fail-priscilla', true); throw e; });
   ok(true, 'new learner chooses her own password and lands on her home page');
 
+  step = 'tutor-adds-learner';
+  await P.page.click('.nav [data-id="tlearners"]'); await P.page.click('[data-action="ta-open"]');
+  await P.page.fill('#ta-name', 'Lindiwe Dube'); await P.page.fill('#ta-email', 'lindiwe@example.com'); await P.page.fill('#ta-phone', '082 111 2222'); await P.page.fill('#ta-gphone', '083 333 4444'); await P.page.fill('#ta-school', 'Eunice High School'); await P.page.selectOption('#ta-grade', '11');
+  await P.page.click('#f-tadd button[type=submit]'); await P.page.waitForSelector('text=Login created');
+  const dpw = await P.page.$eval('.creds code', (e) => (e.textContent.match(/Password: (\S+)/) || [])[1]);
+  ok(/^Adv-[a-z0-9]{6}$/.test(dpw || ''), 'tutor creates a learner login with a temporary password');
+  ok((await P.page.$eval('#ts-who', (e) => e.options[e.selectedIndex].text)).startsWith('Lindiwe Dube – Maths'), 'the new learner is ready to schedule');
+  await P.page.click('[data-action="slot-add"][data-p="ts"]'); await P.page.click('[data-action="slot-add"][data-p="ts"]'); await P.page.selectOption('#ts-rep', '2'); await P.page.waitForTimeout(200);
+  ok(/^6 lessons · 6 h/.test(await P.page.textContent('#ts-sum')), 'three days a week for two weeks = 6 lessons');
+  await shot(P.page, '35-tutor-schedule-form', true);
+  await P.page.click('#f-tsched button[type=submit]'); await P.page.waitForSelector('text=Scheduled ✔');
+  ok(await P.page.isVisible('h3:has-text("6 lessons for Lindiwe Dube")'), 'tutor schedules six lessons at once');
+  const dwa = decodeURIComponent(await P.page.getAttribute('.creds a.btn.primary', 'href'));
+  ok(/^https:\/\/wa\.me\/27821112222\?text=/.test(dwa) && dwa.includes('Temporary password: ' + dpw) && (dwa.match(/• /g) || []).length === 6, 'one WhatsApp to the learner with the six times and the login');
+  ok(/wa\.me\/27833334444/.test(await P.page.getAttribute('a:has-text("WhatsApp the parent")', 'href')), 'and one for the parent');
+  await shot(P.page, '36-tutor-scheduled', true);
+  await P.page.click('[data-action="ts-done"]'); await P.page.click('#f-tsched button[type=submit]');
+  await P.page.waitForSelector('text=already have a lesson'); ok(true, 'a clash with a booked lesson is refused');
+  // beyond the 10 hours the director allocated for Thabo: allowed, with a warning
+  await P.page.selectOption('#ts-who', { label: 'Thabo Mokoena – Maths (Pretoria High)' }); await P.page.waitForSelector('#ts-hours .cd');
+  await P.page.click('[data-action="slot-add"][data-p="ts"]'); await P.page.click('[data-action="slot-add"][data-p="ts"]');
+  for (const h of await P.page.$$('#ts-slots select[id$="-h"]')) await h.selectOption('18');
+  await P.page.selectOption('#ts-rep', '4'); await P.page.waitForTimeout(200);
+  ok(/over/.test(await P.page.textContent('#ts-hours')), 'hours panel warns before going over the allocation: ' + (await P.page.textContent('#ts-hours .slot-warn')).trim().slice(0, 50));
+  await P.page.click('#f-tsched button[type=submit]'); await P.page.waitForSelector('h3:has-text("12 lessons for Thabo Mokoena")'); ok(true, 'tutor may still schedule beyond the allocation');
+  await P.page.click('[data-action="ts-done"]');
+  // a new temporary password while Lindiwe has not signed in yet
+  await P.page.click('.nav [data-id="tlearners"]'); await P.page.click('[data-action="t-pass"]'); await P.page.waitForSelector('.creds:has-text("New temporary password") code');
+  const dpw2 = await P.page.$eval('.creds code', (e) => (e.textContent.match(/Password: (\S+)/) || [])[1]); ok(dpw2 && dpw2 !== dpw, 'tutor makes a new temporary password');
+  await shot(P.page, '37-tutor-learners', true);
+  const LD = await mk('lindiwe'); await LD.page.goto(BASE); await LD.page.fill('#a-email', 'lindiwe@example.com'); await LD.page.fill('#a-pass', dpw2); await LD.page.click('#f-signin button[type=submit]');
+  await LD.page.waitForSelector('#f-newpass'); await LD.page.fill('#np-1', 'lindiwe-pass1'); await LD.page.fill('#np-2', 'lindiwe-pass1'); await LD.page.click('#f-newpass button[type=submit]'); await LD.page.waitForSelector('text=Hi Lindiwe');
+  const ld = await LD.page.evaluate(() => ({ n: ADV.state.bookings.filter((b) => b.status === 'accepted').length, fee: ADV.state.bookings.reduce((n, b) => n + Number(b.fee), 0), approved: ADV.state.approved }));
+  ok(ld.n === 6 && ld.approved, 'Lindiwe signs in with her own password and sees her six lessons ' + JSON.stringify(ld));
+  const old = await LD.page.evaluate(async () => { try { await ADV.sb.update('profiles', { id: 'eq.' + ADV.sb.user.id }, { sponsor_id: null, created_by: null, role: 'admin' }); } catch (e) { /* refused */ } return (await ADV.sb.select('profiles', { id: 'eq.' + ADV.sb.user.id }))[0]; });
+  ok(old.role === 'learner' && old.created_by, 'a learner cannot change who added them or their role');
+  await P.page.reload(); await P.page.click('.nav [data-id="tlearners"]'); await P.page.waitForSelector('h3:has-text("Lindiwe Dube")');
+  ok(!(await P.page.isVisible('[data-action="t-pass"]')), 'no tutor password reset once the learner has chosen her own');
+  const tRes = await P.page.evaluate(async (id) => { try { await ADV.sb.fn('admin-users', { action: 'reset_password', user_id: id, password: 'Adv-zzzzzz' }); return 'allowed'; } catch (e) { return e.message; } }, thaboId);
+  ok(/director/.test(tRes), 'tutor cannot reset a director\'s learner\'s password: ' + tRes);
+
+  step = 'director-analysis';
+  await A.page.goto(BASE + '#analysis'); await A.page.reload(); await A.page.waitForSelector('h1:has-text("Analysis")');
+  ok(await A.page.isVisible('.an-table td.name:has-text("Patience Mazibuko")') && await A.page.isVisible('.an-table td.name:has-text("Lindiwe Dube")'), 'lessons per tutor and per learner');
+  ok(await A.page.isVisible('.an-flags:has-text("Thabo Mokoena")') && /over/.test(await A.page.textContent('.an-flags')), 'flag: Thabo is booked beyond his allocated hours');
+  await A.page.selectOption('select[data-action="sp-link"]', thaboId); await A.page.waitForSelector('text=/Billed to Test Sponsor Trust from now on – \\d+ lessons moved/');
+  const spRows = await A.page.evaluate(() => ADV.state.bookings.filter((b) => b.learner_id === ADV.state.learners.find((l) => l.full_name === 'Thabo Mokoena').id && b.sponsor_id).map((b) => Number(b.fee))); ok(spRows.length >= 13 && spRows.every((f) => f === 0), 'Thabo\'s unpaid lessons move to the sponsor with no learner fee (' + spRows.length + ')');
+  await A.page.waitForSelector('[data-action="inv-make"]'); await A.page.click('[data-action="inv-make"]'); await A.page.waitForSelector('.inv-row.new');
+  const inum = (await A.page.textContent('.inv-row.new b.mono')).trim(); ok(/^\d{9}$/.test(inum), 'invoice made from the delivered lesson: ' + inum);
+  const [ipop] = await Promise.all([A.page.waitForEvent('popup'), A.page.click('.inv-row.new [data-action="inv-open"]')]);
+  await ipop.waitForLoadState('load'); const itxt = await ipop.textContent('body');
+  ok(itxt.includes('Invoice no.: ' + inum) && /Mathematics – one-hour online lesson for Thabo Mokoena \(Pretoria High\), tutor Patience Mazibuko/.test(itxt) && /TEST BANK/.test(itxt) && /TOTAL/.test(itxt), 'printable invoice with the line, total and banking details');
+  await ipop.screenshot({ path: path.join(OUT, '38-invoice.png'), fullPage: true });   // (request routing in this test context stalls images in written pop-ups; the logo itself is checked below)
+  const logo = await ipop.$eval('.logo img', (i) => i.getAttribute('src')); ok(/\/assets\/invoice-logo\.png$/.test(logo) && await A.page.evaluate(async (u) => (await fetch(u)).headers.get('content-type') === 'image/png', logo), 'logo on the invoice: ' + logo);
+  await ipop.close();
+  await A.page.click('.inv-row.new [data-action="inv-st"][data-v="sent"]'); await A.page.waitForSelector('text=Marked sent');
+  ok(!(await A.page.isVisible('[data-action="inv-make"]')), 'invoiced lessons are not offered again');
+  await shot(A.page, '39-director-analysis', true);
+  const tFin = await P.page.evaluate(async () => ({ inv: await ADV.sb.select('invoices', {}).then((r) => r.length, () => -1), sp: await ADV.sb.select('sponsors', {}).then((r) => r.length, () => -1), set: (await ADV.sb.select('private_settings', { key: 'eq.invoice' })).length, tab: !!document.querySelector('[data-id="analysis"]') }));
+  ok(tFin.inv <= 0 && tFin.sp <= 0 && tFin.set === 0 && !tFin.tab, 'tutors see no Analysis, invoices, sponsors or banking details ' + JSON.stringify(tFin));
+  const lFin = await LD.page.evaluate(async () => ({ inv: await ADV.sb.select('invoices', {}).then((r) => r.length, () => -1), set: (await ADV.sb.select('private_settings', { key: 'eq.invoice' })).length }));
+  ok(lFin.inv <= 0 && lFin.set === 0, 'learners neither ' + JSON.stringify(lFin));
+
   step = 'tutor-mobile';
   const PM = await mk('tutorMobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await PM.page.goto(BASE); await PM.page.fill('#a-email', 'patience@example.com'); await PM.page.fill('#a-pass', 'patience-pass1'); await PM.page.click('#f-signin button[type=submit]'); await PM.page.waitForSelector('text=Good');
   await shot(PM.page, '32-tutor-mobile-today', true);
   ok((await PM.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1, 'tutor portal fits a phone');
+  await PM.page.click('.tabbar [data-id="tsched"]'); await PM.page.waitForSelector('#f-tsched'); await PM.page.click('[data-action="slot-add"][data-p="ts"]'); await shot(PM.page, '40-tutor-mobile-schedule', true);
+  ok((await PM.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1, 'schedule form fits a phone');
+  const AM = await mk('directorMobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await AM.page.goto(BASE); await AM.page.fill('#a-email', 'kaytkayt5@gmail.com'); await AM.page.fill('#a-pass', 'tutorpass1'); await AM.page.click('#f-signin button[type=submit]'); await AM.page.waitForSelector('.tabbar');
+  await AM.page.goto(BASE + '#analysis'); await AM.page.waitForSelector('h1:has-text("Analysis")'); await shot(AM.page, '41-director-mobile-analysis', true);
+  ok((await AM.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1, 'Analysis fits a phone (tables scroll inside their card)');
   await PM.page.click('.tabbar [data-id="board"]'); await PM.page.waitForSelector('#wb-cv'); await shot(PM.page, '33-tutor-mobile-board');
   ok((await PM.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1, 'board fits a phone');
 

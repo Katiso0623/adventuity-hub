@@ -94,10 +94,10 @@
 
   /* ---------------------------------------------------------------- tabs */
   const LEARNER_TABS = [['home', 'Home', 'home'], ['book', 'Book', 'plus'], ['lessons', 'My lessons', 'cal'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['progress', 'Progress', 'chart'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
-  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['board', 'Board', 'pen'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
-  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
+  const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['analysis', 'Analysis', 'chart'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['board', 'Board', 'pen'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
+  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tsched', 'Schedule', 'plus'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
   const tabs = () => (state.isAdmin ? ADMIN_TABS : state.isTutor ? TUTOR_TABS : LEARNER_TABS);
-  const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : state.isTutor ? ['tdash', 'tlessons', 'board', 'maths'] : ['home', 'book', 'lessons', 'maths']);
+  const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : state.isTutor ? ['tdash', 'tsched', 'tlessons', 'board'] : ['home', 'book', 'lessons', 'maths']);
   ADV.go = function (tab, topic, opts) {
     state.tab = tab; state.topic = topic || null; state.quiz = null;
     const hash = topic ? '#t-' + topic : '#' + tab;
@@ -141,7 +141,7 @@
   document.addEventListener('input', (e) => { const el = e.target; if (el && el.id && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !/^(file|checkbox|radio)$/.test(el.type) && el.closest('#view')) typed.set(el.id, el.value); }, true);
   document.addEventListener('change', (e) => { const el = e.target; if (el && el.id && el.tagName === 'SELECT' && el.closest('#view')) typed.set(el.id, el.value); }, true);
   document.addEventListener('submit', () => typed.clear(), true);
-  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-action],[data-go]')) typed.clear(); }, true);   // buttons that save or move on use the values themselves
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-action],[data-go]') && !e.target.closest('[data-keep]')) typed.clear(); }, true);   // buttons that save or move on use the values themselves; [data-keep] buttons (add a day, …) leave them
   function paint(view, html, key) {
     const same = key === paintedKey; const focus = document.activeElement && view.contains(document.activeElement) ? document.activeElement.id : '';
     view.innerHTML = html; paintedKey = key;
@@ -256,7 +256,7 @@
   };
   const STATUS = ADV.STATUS = { pending: ['warn', 'Waiting for the tutor'], accepted: ['good', 'Confirmed'], declined: ['bad', 'Not accepted'], cancelled: ['', 'Cancelled'], completed: ['', 'Completed'] };
   ADV.statusPill = (b) => pill((STATUS[b.status] || ['', b.status])[0], (STATUS[b.status] || ['', b.status])[1]);
-  ADV.notify = async (bookingId, event) => { try { await sb.fn('notify', { booking_id: bookingId, event }); } catch (e) { console.warn('notify failed', e); } };
+  ADV.notify = async (bookingId, event, extra) => { try { await sb.fn('notify', Object.assign({ booking_id: bookingId, event }, extra || {})); } catch (e) { console.warn('notify failed', e); } };
   ADV.emailTutor = async (subject, lines) => {
     const to = state.priv.notify && state.priv.notify.email; if (!to) return;
     try { await fetch('https://formsubmit.co/ajax/' + enc(to), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(Object.assign({ _subject: subject, _template: 'table', _captcha: 'false' }, lines)) }); } catch (e) { /* e-mail is best effort */ }
