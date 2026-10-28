@@ -624,6 +624,7 @@ begin
   return inv;
 end $$;
 revoke execute on function public.make_sponsor_invoice(uuid, date, date) from public, anon;
+grant execute on function public.make_sponsor_invoice(uuid, date, date) to authenticated;
 
 -- ---------------------------------------------------------------- tutors schedule their own lessons
 -- Lessons booked through tutor_schedule() skip the learner booking rules (notice, fee table, the director's diary);
@@ -744,3 +745,5 @@ language sql stable security definer set search_path = public as $$
   where public.is_tutor() and a.tutor_id = auth.uid() and a.active
   order by p.full_name, a.subject;
 $$;
+revoke execute on function public.tutor_learners() from public, anon;
+grant execute on function public.tutor_learners() to authenticated;

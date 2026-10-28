@@ -2,7 +2,8 @@
 // POST { booking_id, event }   event: requested | cancelled | pop | accepted | declined | paid | updated | test
 // POST { event: 'message', learner_id }   a new chat message in that learner's conversation
 // Learner events (requested, cancelled, pop, their own messages) notify the admin; admin events notify the learner
-// and, for lessons another tutor teaches, that tutor too. A tutor's 'delivered' event notifies the admin.
+// and, for lessons another tutor teaches, that tutor too. A tutor's 'delivered' event notifies the admin; their 'scheduled'
+// event (POST { booking_id: the first lesson, event: 'scheduled' }, within 3 minutes of booking) notifies the learner and the admin.
 // verify_jwt is off because the project uses publishable keys; the caller's session is checked below via /auth/v1/user.
 import webpush from 'npm:web-push@3.6.7';
 
