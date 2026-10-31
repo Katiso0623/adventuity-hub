@@ -20,6 +20,8 @@ window.FL_CONFIG = {
   payments: { endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-pay' },
   // Public rainfall and river-flow records near a site (floodline-data function, refreshed weekly).
   data: { endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-data' },
+  // Phone alerts for new quote requests (Studio → Quote requests → Notify me): the public VAPID key of the push service.
+  push: { vapidPublic: 'BK4rXaBf6DARfH3mbz06jPgyhOwgLveC_bYUAH6LjYMxme8Q5EK1dUFxUjokjtsOw2VZH8Ye5s0FCaqrscoqAZc' },
   // Used by the Studio's "Quote requests" tab (sign in with your Adventuity portal admin account).
   supabase: { url: 'https://sxbpjowkcpysoxurfqzo.supabase.co', key: 'sb_publishable_K6kU-7Ghj5kPH-6cKP3BJg_8Htk1mmp' },
   // Optional pricing cards on the public site. Leave empty to show "quoted per site".
@@ -40,5 +42,5 @@ window.FL_CONFIG = {
   // The Studio is shipped encrypted; the key is released only to signed-in administrators (Supabase row-level security).
   // Satellite imagery for the map and the plan drawing (Esri World Imagery). Add an ArcGIS Location Platform key for commercial use.
   imagery: { esriKey: '' },
-  studio: { bundle: 'js/studio.bundle.enc?v=20261031102532', passcodeSha256: '' },
+  studio: { bundle: 'js/studio.bundle.enc?v=20261031110026', passcodeSha256: '' },
 };
