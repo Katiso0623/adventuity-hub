@@ -129,9 +129,9 @@ textarea { min-height: 110px; resize: vertical; }
 .eqbox { background: #fff; color: #142231; border: 1.5px solid #142231; padding: 18px 20px; display: grid; gap: 14px; font-size: 17px; }
 .eqbox math { font-size: 18px; } .eqbox small { font: 12px var(--f-mono); color: #5b6670; }
 /* pricing */
-.prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 .prices article { background: var(--sheet); border: 1px solid var(--rule); border-top: 4px solid var(--navy); padding: 20px; display: grid; gap: 8px; align-content: start; }
-.prices .amt { font: 700 30px var(--f-display); }
+.prices .amt { font: 700 28px var(--f-display); white-space: nowrap; }
 /* faq */
 .faq details { border-bottom: 1px solid var(--rule); padding: 14px 0; } .faq summary { cursor: pointer; font: 700 20px var(--f-display); letter-spacing: .02em; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
 .faq summary::-webkit-details-marker { display: none; } .faq summary::after { content: '+'; color: var(--flood); font-size: 26px; line-height: 1; } .faq details[open] summary::after { content: '−'; }
@@ -204,3 +204,11 @@ footer.foot a { color: #fff; }
 .pay-ok { display: grid; gap: 4px; border-left: 4px solid var(--ok); background: rgba(47,125,79,.08); padding: 12px 14px; border-radius: 4px; margin-bottom: 14px; }
 .pay-ok b { color: var(--ok); font-size: 18px; }
 @media (max-width: 520px) { .pay-card { padding: 20px 16px; } .pay-dl { grid-template-columns: 80px 1fr; } }
+
+/* call and WhatsApp */
+.btn.wa { background: #1fa855; border-color: #1fa855; color: #fff; }
+.btn.wa:hover { background: #178f47; }
+#wa-float { position: fixed; right: 18px; bottom: 18px; width: 54px; height: 54px; border-radius: 50%; background: #1fa855; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); z-index: 60; }
+#wa-float:hover { background: #178f47; }
+@media (max-width: 640px) { #wa-float { right: 14px; bottom: 14px; } }
+@media print { #wa-float { display: none; } }
