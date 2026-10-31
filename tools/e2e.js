@@ -359,7 +359,9 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
 
   step = 'director-analysis';
   await A.page.goto(BASE + '#analysis'); await A.page.reload(); await A.page.waitForSelector('h1:has-text("Analysis")');
+  await A.page.click('[data-action="an-p"][data-id="next"]'); await A.page.waitForTimeout(200);   // Lindiwe's lessons start tomorrow, which may be next month
   ok(await A.page.isVisible('.an-table td.name:has-text("Patience Mazibuko")') && await A.page.isVisible('.an-table td.name:has-text("Lindiwe Dube")'), 'lessons per tutor and per learner');
+  await A.page.click('[data-action="an-p"][data-id="month"]'); await A.page.waitForTimeout(200);
   ok(await A.page.isVisible('.an-flags:has-text("Thabo Mokoena")') && /over/.test(await A.page.textContent('.an-flags')), 'flag: Thabo is booked beyond his allocated hours');
   await A.page.selectOption('select[data-action="sp-link"]', thaboId); await A.page.waitForSelector('text=/Billed to Test Sponsor Trust from now on – \\d+ lessons moved/');
   const spRows = await A.page.evaluate(() => ADV.state.bookings.filter((b) => b.learner_id === ADV.state.learners.find((l) => l.full_name === 'Thabo Mokoena').id && b.sponsor_id).map((b) => Number(b.fee))); ok(spRows.length >= 13 && spRows.every((f) => f === 0), 'Thabo\'s unpaid lessons move to the sponsor with no learner fee (' + spRows.length + ')');
@@ -378,6 +380,34 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   ok(tFin.inv <= 0 && tFin.sp <= 0 && tFin.set === 0 && !tFin.tab, 'tutors see no Analysis, invoices, sponsors or banking details ' + JSON.stringify(tFin));
   const lFin = await LD.page.evaluate(async () => ({ inv: await ADV.sb.select('invoices', {}).then((r) => r.length, () => -1), set: (await ADV.sb.select('private_settings', { key: 'eq.invoice' })).length }));
   ok(lFin.inv <= 0 && lFin.set === 0, 'learners neither ' + JSON.stringify(lFin));
+
+  step = 'bundles';
+  await LD.page.click('.nav [data-id="book"]'); await LD.page.waitForSelector('.bundle-card');
+  ok(/R1 100,00/.test(await LD.page.textContent('.bundle-card')) && /R220,00 per hour/.test(await LD.page.textContent('.bundle-card')), 'learner sees the 5- and 10-hour bundles with the hourly saving');
+  await shot(LD.page, '42-learner-bundle-offer', true);
+  await LD.page.click('[data-action="bundle-req"][data-h="5"]'); await LD.page.waitForSelector('.bundle-card:has-text("Waiting for the tutor")');
+  const fake = await LD.page.evaluate(async () => { try { const r = await ADV.sb.insert('bundles', [{ learner_id: ADV.sb.user.id, hours: 10, price: 1 }]); return Number(r[0].price); } catch (e) { return e.message; } });
+  ok(fake === 2000, 'the server sets the bundle price, not the learner (' + fake + ')');
+  await LD.page.evaluate(async () => { const b = ADV.state.bundles || []; await ADV.sb.rpc('cancel_bundle', { b: (await ADV.sb.select('bundles', { hours: 'eq.10' }))[0].id }); });
+  await A.page.goto(BASE + '#dash'); await A.page.reload(); await A.page.waitForSelector('h2:has-text("Bundle requests")');
+  ok(await A.page.isVisible('h3:has-text("Lindiwe Dube · 5 h for R1 100,00")'), 'director sees the bundle request on the Dashboard');
+  await A.page.fill('[id^="bm-"]', 'Welcome – pay within 3 days, please.'); await A.page.click('[data-action="bundle-accept"]'); await A.page.waitForSelector('text=Bundle accepted');
+  await LD.page.reload(); await LD.page.click('.nav [data-id="book"]'); await LD.page.waitForSelector('.bundle-card:has-text("5 h of 5 h left")');
+  await LD.page.click('[data-action="book-time"]'); const bprice = await LD.page.textContent('.pricebar');
+  ok(/R0/.test(bprice) && /From your bundle · 5 h left/.test(bprice), 'booking page shows the lesson comes from the bundle: ' + bprice.replace(/\s+/g, ' ').trim().slice(0, 60));
+  await LD.page.click('[data-action="book-send"]'); await LD.page.waitForSelector('.lesson .pill:has-text("From your bundle")');
+  const lb = await LD.page.evaluate(() => ADV.state.bookings.filter((b) => b.bundle_id).map((b) => Number(b.fee)));
+  ok(lb.length === 1 && lb[0] === 0, 'the lesson is taken from the bundle with no fee');
+  await LD.page.click('.nav [data-id="book"]'); await LD.page.waitForSelector('.bundle-card:has-text("4 h of 5 h left")'); ok(true, 'bundle shows 4 h left');
+  await LD.page.click('[data-action="bundle-pay"]'); await LD.page.waitForSelector('.bundle-card .paybox'); ok(/TEST BANK/.test(await LD.page.textContent('.bundle-card .paybox')), 'payment details with the bundle reference');
+  await LD.page.setInputFiles('input[data-action="bundle-pop"]', { name: 'pop.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') }); await LD.page.waitForSelector('.bundle-card:has-text("Proof sent")');
+  ok(true, 'learner uploads proof of payment for the bundle'); await shot(LD.page, '43-learner-bundle', true);
+  await A.page.goto(BASE + '#money'); await A.page.reload(); await A.page.waitForSelector('h3:has-text("Lesson bundles")');
+  ok(await A.page.isVisible('tr:has-text("Lindiwe Dube") >> text=Proof sent'), 'director sees the bundle and the proof');
+  await A.page.click('[data-action="bundle-paid"]'); await A.page.waitForSelector('text=Marked paid');
+  await shot(A.page, '44-director-bundles', true);
+  await A.page.goto(BASE + '#analysis'); await A.page.reload(); await A.page.waitForSelector('h1:has-text("Analysis")');
+  ok(/R1 100,00 from bundles/.test(await A.page.textContent('.stack')), 'Analysis counts the bundle payment');
 
   step = 'tutor-mobile';
   const PM = await mk('tutorMobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

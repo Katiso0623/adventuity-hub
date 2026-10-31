@@ -9,7 +9,7 @@ ap = argparse.ArgumentParser(); ap.add_argument('--port', type=int, default=5432
 A = ap.parse_args()
 LOG = []; LOCK = threading.Lock()
 SETOF = {'busy_slots', 'class_seats', 'tutor_lessons', 'tutor_learners', 'my_tutors', 'tutor_schedule'}
-EMBED = {('bookings', 'profiles'): ('profiles', 'id', 'learner_id'), ('bookings', 'classes'): ('classes', 'id', 'class_id')}
+EMBED = {('bundles', 'profiles'): ('profiles', 'id', 'learner_id'), ('bookings', 'profiles'): ('profiles', 'id', 'learner_id'), ('bookings', 'classes'): ('classes', 'id', 'class_id')}
 IDENT = re.compile(r'^[a-z_][a-z0-9_]*$')
 
 def lit(v):

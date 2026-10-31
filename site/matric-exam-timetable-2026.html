@@ -339,12 +339,13 @@ var all=document.getElementById('all-papers');if(all&&need>0)all.textContent='Wr
 <script src="config.js"></script>
 <script>(function(){var C=window.ADV_CONFIG||{};if(!C.supabaseUrl||!C.supabaseKey||!window.fetch)return;
 function R(n){n=Math.round(Number(n)*100)/100;var p=n.toFixed(n%1?2:0).split('.');return'R'+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+(p[1]?','+p[1]:'')}
-fetch(String(C.supabaseUrl).replace(/\/+$/,'')+'/rest/v1/public_settings?select=key,value&key=in.(fees,site)',{headers:{apikey:C.supabaseKey}}).then(function(r){return r.ok?r.json():[]}).then(function(rows){
+fetch(String(C.supabaseUrl).replace(/\/+$/,'')+'/rest/v1/public_settings?select=key,value&key=in.(fees,site,bundles)',{headers:{apikey:C.supabaseKey}}).then(function(r){return r.ok?r.json():[]}).then(function(rows){
 var s={};(Array.isArray(rows)?rows:[]).forEach(function(x){s[x.key]=x.value});var f=s.fees;
 if(f&&typeof f==='object'){var rate=function(k){var v=Number(k==='group'?f.group:(f[k]!=null?f[k]:f['default']));return v>0?v:null};
 [].forEach.call(document.querySelectorAll('[data-fee]'),function(el){var k=el.getAttribute('data-fee'),v=rate(k);if(v==null)return;el.textContent=R(k==='group'?v:v*Number(el.getAttribute('data-min')||60)/60)});
 var lo=['maths','phys','chem','life'].map(rate).filter(function(v){return v!=null});if(lo.length)[].forEach.call(document.querySelectorAll('[data-fee-from]'),function(el){el.textContent=R(Math.min.apply(null,lo))})}
-var w=s.site&&s.site.whatsapp;if(w){var d=String(w).replace(/\D/g,'');if(d.charAt(0)==='0')d='27'+d.slice(1);if(d.length>=11)[].forEach.call(document.querySelectorAll('[data-wa]'),function(el){el.href='https://wa.me/'+d+'?text='+encodeURIComponent('Hi, I would like to book a lesson.');el.hidden=false})}
+var bu=s.bundles;if(Array.isArray(bu)){[].forEach.call(document.querySelectorAll('[data-bundle]'),function(el){var o=bu[Number(el.getAttribute('data-bundle'))];if(!o||!(Number(o.hours)>0)){el.hidden=true;return}var k=el.getAttribute('data-k');if(k==='card')return;el.textContent=k==='hours'?String(o.hours).replace('.',','):k==='rate'?R(Number(o.price)/Number(o.hours)):R(o.price)})}
+var w=s.site&&s.site.whatsapp;if(w){var d=String(w).replace(/\D/g,'');if(d.charAt(0)==='0')d='27'+d.slice(1);if(d.length>=11){[].forEach.call(document.querySelectorAll('[data-wa]'),function(el){el.href='https://wa.me/'+d+'?text='+encodeURIComponent(el.getAttribute('data-wa-msg')||'Hi Adventuity, I would like to book a lesson. Grade: … Subject: … Days and times that suit: …');el.hidden=false});[].forEach.call(document.querySelectorAll('[data-wa-only]'),function(el){el.hidden=false})}}
 }).catch(function(){})})();</script>
 </body>
 </html>

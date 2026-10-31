@@ -222,6 +222,7 @@
   async function loadPrivate() {
     try { const rows = await sb.select('private_settings', { select: 'key,value' }); state.priv = {}; rows.forEach((r) => { state.priv[r.key] = r.value; }); } catch (e) { /* ignore */ }
   }
+  ADV.loadPrivate = loadPrivate;
   async function afterLogin() {
     state.loading = true; render();
     try {
@@ -248,6 +249,7 @@
       if (state.isTutor) { state.bookings = await sb.rpc('tutor_lessons', { from_ts: new Date(Date.now() - 120 * 864e5).toISOString() }) || []; state.classes = []; return; }
       const q = state.isAdmin ? { select: '*,profiles!bookings_learner_id_fkey(full_name,phone,email,school)', order: 'starts_at.desc', limit: 3000 } : { select: '*,classes(title)', learner_id: 'eq.' + sb.user.id, order: 'starts_at.desc' };
       state.bookings = await sb.select('bookings', q);
+      if (ADV.loadBundles) await ADV.loadBundles();
       state.classes = await sb.select('classes', { order: 'starts_at.asc', starts_at: 'gte.' + new Date(Date.now() - 864e5).toISOString() });
       if (!state.isAdmin && state.bookings.some((b) => b.tutor_id && !(state.tutorNames || {})[b.tutor_id])) {
         try { const t = await sb.rpc('my_tutors', {}); state.tutorNames = {}; (t || []).forEach((x) => { state.tutorNames[x.tutor_id] = x.full_name; }); } catch (e) { /* names are optional */ }
@@ -342,6 +344,7 @@
       (notice ? '<div class="callout"><span class="eyebrow">From your tutor</span><p style="margin-top:4px;white-space:pre-line">' + esc(notice) + '</p></div>' : '') +
       '<div class="grid cols-2">' + (next ? lessonCard(next, true) : '<div class="card"><span class="eyebrow">Next lesson</span><h3 style="margin-top:6px">No confirmed lesson yet</h3><p class="small muted" style="margin-top:4px">' + (pend.length ? pend.length + ' request' + (pend.length > 1 ? 's are' : ' is') + ' waiting for the tutor to accept.' : 'Request a one-on-one or a seat in a group class.') + '</p><div class="row" style="margin-top:10px"><button class="btn primary" data-go="tab" data-id="book">Book a lesson</button></div></div>') +
       (ADV.studyTodayCard ? ADV.studyTodayCard() : '') + '</div>' +
+      (ADV.bundleCard ? ADV.bundleCard(true) : '') +
       (!state.approved ? '<div class="card"><div class="row">' + ICON.lock + '<div><b>Study notes open once the tutor approves your account</b><p class="small muted">This usually happens with your first confirmed lesson. You can already see every topic and how long it takes to study.</p></div></div></div>' : '') +
       (ADV.pushCard ? ADV.pushCard('Get a notification on this device when the tutor confirms your lesson.') : '') + reviewCard() + shareCard() + '</div>';
   };
@@ -383,8 +386,8 @@
       (day ? '<div><label>Start time</label><div class="row chips">' + day.slots.map((s) => '<button class="chipbtn ' + (bs.hh === s.hh ? 'maths' : '') + '" data-action="book-time" data-id="' + s.hh + '">' + s.hh + '</button>').join('') + '</div></div>' : '') +
       '<div><label>What do you want to cover? (optional)</label><div class="row chips">' + topicOpts + '</div></div>' +
       '<div class="field"><label for="b-note">Note for the tutor (optional)</label><textarea id="b-note" placeholder="e.g. I struggle with the tangent questions in 2024 Paper 1">' + esc(bs.note || '') + '</textarea></div>' +
-      '<div class="pricebar"><div><span class="eyebrow">Fee</span><div class="price">' + fmt.rand(cost) + '</div><span class="small muted">' + fmt.rand(rate) + ' per hour · pay after the tutor confirms</span></div><button class="btn primary" data-action="book-send"' + (bs.hh ? '' : ' disabled') + '>' + (bs.hh ? 'Request ' + esc(fmt.date(bs.day + 'T12:00:00+02:00')) + ' at ' + bs.hh : 'Choose a day and time') + '</button></div></div>';
-    return html + '</div>';
+      '<div class="pricebar"><div><span class="eyebrow">Fee</span>' + (ADV.bundleCovers && ADV.bundleCovers(bs.mins) != null ? '<div class="price">R0</div><span class="small muted">From your bundle · ' + String(Math.round(ADV.bundleCovers(bs.mins) * 10) / 10).replace('.', ',') + ' h left</span>' : '<div class="price">' + fmt.rand(cost) + '</div><span class="small muted">' + fmt.rand(rate) + ' per hour · pay after the tutor confirms</span>') + '</div><button class="btn primary" data-action="book-send"' + (bs.hh ? '' : ' disabled') + '>' + (bs.hh ? 'Request ' + esc(fmt.date(bs.day + 'T12:00:00+02:00')) + ' at ' + bs.hh : 'Choose a day and time') + '</button></div></div>';
+    return html + (ADV.bundleCard ? ADV.bundleCard() : '') + '</div>';
   };
   ADV.refreshBusy = async function () {
     try { state.busy = await sb.rpc('busy_slots', { from_ts: new Date().toISOString(), to_ts: new Date(Date.now() + 60 * 864e5).toISOString() }); } catch (e) { state.busy = []; }
@@ -396,7 +399,7 @@
     const s = new Date(b.starts_at); const jw = ADV.joinWindow(b); const room = ADV.bookingRoom(b);
     const title = b.class_id ? (b.classes && b.classes.title) || 'Group class' : SUBJ[b.subject].name + ' – one-on-one';
     const due = Number(b.fee) > 0;
-    const pay = (b.status === 'accepted' || b.status === 'completed') && due ? (b.paid ? pill('good', 'Paid') : pill('warn', 'Payment due ' + fmt.rand(b.fee))) : '';
+    const pay = (b.status === 'accepted' || b.status === 'completed') && due ? (b.paid ? pill('good', 'Paid') : pill('warn', 'Payment due ' + fmt.rand(b.fee))) : b.bundle_id && !['declined', 'cancelled'].includes(b.status) ? pill('accent', 'From your bundle') : '';
     let actions = '';
     if (b.status === 'accepted' && !jw.over) {
       actions += jw.open && room ? '<a class="btn primary join-link" href="' + esc(ADV.roomUrl(room, state.profile.full_name)) + '" target="_blank" rel="noopener">' + ICON.video + 'Join the lesson</a>' + ADV.lessonTimer(b) : '<span class="small muted">' + ICON.clock + ' Join opens 15 minutes before the start · ' + fmt.mins((new Date(b.ends_at) - new Date(b.starts_at)) / 6e4) + ' lesson</span>';

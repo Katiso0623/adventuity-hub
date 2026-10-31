@@ -1,6 +1,7 @@
 // Sends push notifications about a booking.
 // POST { booking_id, event }   event: requested | cancelled | pop | accepted | declined | paid | updated | test
 // POST { event: 'message', learner_id }   a new chat message in that learner's conversation
+// POST { bundle_id, event }   event: bundle-requested | bundle-pop (the learner tells the admin) · bundle-accepted | bundle-declined | bundle-paid (the admin tells the learner)
 // Learner events (requested, cancelled, pop, their own messages) notify the admin; admin events notify the learner
 // and, for lessons another tutor teaches, that tutor too. A tutor's 'delivered' event notifies the admin; their 'scheduled'
 // event (POST { booking_id: the first lesson, event: 'scheduled' }, within 3 minutes of booking) notifies the learner and the admin.
@@ -28,9 +29,9 @@ Deno.serve(async (req) => {
     const me = await fetch(URL_ + '/auth/v1/user', { headers: { apikey: SECRET, Authorization: auth } });
     if (!me.ok) return json({ error: 'Sign in first' }, 401);
     const user = await me.json();
-    const { booking_id, event, learner_id } = await req.json();
+    const { booking_id, event, learner_id, bundle_id } = await req.json();
     const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-    if ((booking_id && !UUID.test(booking_id)) || (learner_id && !UUID.test(learner_id))) return json({ error: 'Invalid request' }, 400);
+    if ((booking_id && !UUID.test(booking_id)) || (learner_id && !UUID.test(learner_id)) || (bundle_id && !UUID.test(bundle_id))) return json({ error: 'Invalid request' }, 400);
     const cfgRows = await (await admin('/rest/v1/app_config?select=key,value&key=in.(vapid_public,vapid_private,vapid_subject,site_url)')).json();
     const cfg: Record<string, string> = Object.fromEntries(cfgRows.map((r: { key: string; value: string }) => [r.key, r.value]));
     webpush.setVapidDetails(cfg.vapid_subject || 'mailto:tutor@example.com', cfg.vapid_public, cfg.vapid_private);
@@ -53,6 +54,23 @@ Deno.serve(async (req) => {
       let sent = 0;
       for (const s of subs) { try { await webpush.sendNotification(s.sub, JSON.stringify({ title, body, tag, url: site + 'portal.html#messages' }), { TTL: 86400 }); sent++; } catch (e) { const code = (e as { statusCode?: number }).statusCode; if (code === 404 || code === 410) await admin('/rest/v1/push_subs?id=eq.' + s.id, { method: 'DELETE' }); } }
       return json({ sent, devices: subs.length });
+    } else if (bundle_id) {
+      const rows = await (await admin('/rest/v1/bundles?select=*,profiles!bundles_learner_id_fkey(full_name)&id=eq.' + bundle_id)).json();
+      const bu = rows[0]; if (!bu) return json({ error: 'Bundle not found' }, 404);
+      const isAdmin = caller.role === 'admin';
+      if (!isAdmin && bu.learner_id !== user.id) return json({ error: 'Not your bundle' }, 403);
+      const who = (bu.profiles && bu.profiles.full_name) || 'A learner';
+      const what = Number(bu.hours) + ' lesson hours · R' + Number(bu.price).toFixed(2);
+      if (!isAdmin && ['bundle-requested', 'bundle-pop'].includes(event)) {
+        const admins = await (await admin('/rest/v1/profiles?select=id&role=eq.admin')).json();
+        recipients = admins.map((a: { id: string }) => a.id);
+        title = event === 'bundle-pop' ? 'Proof of payment for a bundle' : 'New bundle request'; body = who + ' – ' + what;
+      } else if (isAdmin && ['bundle-accepted', 'bundle-declined', 'bundle-paid'].includes(event)) {
+        recipients = [bu.learner_id];
+        title = event === 'bundle-accepted' ? 'Bundle accepted ✔' : event === 'bundle-paid' ? 'Bundle payment received – thank you' : 'Bundle not accepted';
+        body = what + (event === 'bundle-accepted' ? ' – your lessons now come from your bundle. Payment details are in the portal.' : '') + (bu.admin_message ? ' – ' + String(bu.admin_message).slice(0, 120) : '');
+      } else return json({ sent: 0 });
+      tag = 'bundle-' + bu.id;
     } else {
       const rows = await (await admin('/rest/v1/bookings?select=*,profiles!bookings_learner_id_fkey(full_name)&id=eq.' + booking_id)).json();
       const b = rows[0]; if (!b) return json({ error: 'Booking not found' }, 404);

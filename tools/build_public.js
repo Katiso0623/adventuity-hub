@@ -28,6 +28,9 @@ const LEGAL = 'Adventuity (Pty) Ltd';
 const SLOGAN = 'Transforming ideas into reality.';
 const FONTS = 'https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap';
 const FEES = { maths: 250, phys: 250, chem: 250, life: 250, group: 100 }; // defaults; live values replace them in the browser
+const BUNDLES = [{ hours: 5, price: 1100 }, { hours: 10, price: 2000 }]; // defaults; live values (public_settings 'bundles') replace them
+// what we are booking for right now (built into the page; the site is rebuilt with every change)
+const NOW_KEY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date());
 const FEE_KEYS = ['maths', 'phys', 'chem', 'life'];
 const DURATIONS = [60, 90, 120];
 const MIN_PER_MARK = 1.2; // 150 marks in 180 minutes
@@ -323,6 +326,8 @@ const CSS_INDEX = `
 .hero-side .slogan{white-space:nowrap;font-size:.95rem}
 .logo-full{width:190px;aspect-ratio:525/351;background:var(--ink)}
 ${maskCss('.logo-full', '--logo-img')}
+.now-booking{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:10px 14px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--ink);font-size:.95rem;max-width:62ch}.now-booking svg{width:18px;height:18px;flex:none;margin-top:2px}
+.fee.bundle{border-color:var(--accent)}
 .facts{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
 .facts li{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.86rem;background:var(--surface);color:var(--ink)}
 .facts li b{font-weight:600}
@@ -548,22 +553,36 @@ ${o.live ? '<li><a href="#" data-wa hidden target="_blank" rel="noopener">WhatsA
 const liveJs = (pre) => `<script src="${pre}config.js"></script>
 <script>(function(){var C=window.ADV_CONFIG||{};if(!C.supabaseUrl||!C.supabaseKey||!window.fetch)return;
 function R(n){n=Math.round(Number(n)*100)/100;var p=n.toFixed(n%1?2:0).split('.');return'R'+p[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g,'\\u00a0')+(p[1]?','+p[1]:'')}
-fetch(String(C.supabaseUrl).replace(/\\/+$/,'')+'/rest/v1/public_settings?select=key,value&key=in.(fees,site)',{headers:{apikey:C.supabaseKey}}).then(function(r){return r.ok?r.json():[]}).then(function(rows){
+fetch(String(C.supabaseUrl).replace(/\\/+$/,'')+'/rest/v1/public_settings?select=key,value&key=in.(fees,site,bundles)',{headers:{apikey:C.supabaseKey}}).then(function(r){return r.ok?r.json():[]}).then(function(rows){
 var s={};(Array.isArray(rows)?rows:[]).forEach(function(x){s[x.key]=x.value});var f=s.fees;
 if(f&&typeof f==='object'){var rate=function(k){var v=Number(k==='group'?f.group:(f[k]!=null?f[k]:f['default']));return v>0?v:null};
 [].forEach.call(document.querySelectorAll('[data-fee]'),function(el){var k=el.getAttribute('data-fee'),v=rate(k);if(v==null)return;el.textContent=R(k==='group'?v:v*Number(el.getAttribute('data-min')||60)/60)});
 var lo=${JSON.stringify(FEE_KEYS).replace(/"/g, "'")}.map(rate).filter(function(v){return v!=null});if(lo.length)[].forEach.call(document.querySelectorAll('[data-fee-from]'),function(el){el.textContent=R(Math.min.apply(null,lo))})}
-var w=s.site&&s.site.whatsapp;if(w){var d=String(w).replace(/\\D/g,'');if(d.charAt(0)==='0')d='27'+d.slice(1);if(d.length>=11)[].forEach.call(document.querySelectorAll('[data-wa]'),function(el){el.href='https://wa.me/'+d+'?text='+encodeURIComponent('Hi, I would like to book a lesson.');el.hidden=false})}
+var bu=s.bundles;if(Array.isArray(bu)){[].forEach.call(document.querySelectorAll('[data-bundle]'),function(el){var o=bu[Number(el.getAttribute('data-bundle'))];if(!o||!(Number(o.hours)>0)){el.hidden=true;return}var k=el.getAttribute('data-k');if(k==='card')return;el.textContent=k==='hours'?String(o.hours).replace('.',','):k==='rate'?R(Number(o.price)/Number(o.hours)):R(o.price)})}
+var w=s.site&&s.site.whatsapp;if(w){var d=String(w).replace(/\\D/g,'');if(d.charAt(0)==='0')d='27'+d.slice(1);if(d.length>=11){[].forEach.call(document.querySelectorAll('[data-wa]'),function(el){el.href='https://wa.me/'+d+'?text='+encodeURIComponent(el.getAttribute('data-wa-msg')||'Hi Adventuity, I would like to book a lesson. Grade: … Subject: … Days and times that suit: …');el.hidden=false});[].forEach.call(document.querySelectorAll('[data-wa-only]'),function(el){el.hidden=false})}}
 }).catch(function(){})})();</script>`;
 
 const COUNTDOWN_JS = `<script>(function(){var now=Date.now(),D=864e5,O=72e5,first=true;
 [].forEach.call(document.querySelectorAll('.cd[data-at]'),function(el){var t=Date.parse(el.getAttribute('data-at'));if(isNaN(t))return;
 var big=el.querySelector('.big'),when=el.querySelector('.when'),days=Math.floor((t+O)/D)-Math.floor((now+O)/D);
 if(when)when.textContent=el.getAttribute('data-when');
-if(now>t+108e5){el.classList.add('past');big.textContent='Written';return}
+if(now>t+108e5){el.remove();return}
 if(now>=t)big.textContent='Writing now';else if(days<=0)big.textContent='Today';else big.innerHTML=days+'<small>'+(days===1?'day':'days')+'</small>';
-if(first){el.classList.add('next');first=false}})})();</script>`;
+if(first){el.classList.add('next');first=false}});if(first){[].forEach.call(document.querySelectorAll('.cd-wrap'),function(w){w.hidden=true})}})();</script>`;
 
+/* one line on what learners book right now, by the date the site is built */
+function season() {
+  const left = Object.values(EXAMS).filter((e) => e.date >= NOW_KEY).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const m = Number(NOW_KEY.slice(5, 7)), d = Number(NOW_KEY.slice(8, 10));
+  if (left.length) {
+    const byDay = left.map((e) => e.short + ' on ' + e.wd + ' ' + e.dm);
+    return `<b>Now booking:</b> last-minute matric revision for ${andList(byDay)}, and help for the Grade 10 and 11 end-of-year exams.`;
+  }
+  if (m === 11 || (m === 12 && d <= 15)) return '<b>Now booking:</b> help for the Grade 10 and 11 end-of-year exams, and a head start on Grade 12 for next year – the best time to fix weak topics is before matric starts.';
+  if (m === 12 || m === 1) return '<b>Now booking for the new year:</b> start Grade 12 Maths, Physical Sciences and Life Sciences ahead of the class – first-term topics such as functions, Newton’s laws and DNA.';
+  if (m >= 2 && m <= 6) return '<b>Now booking:</b> weekly lessons through the term, June exam preparation, and matric rewrites for the May/June exams.';
+  return '<b>Now booking:</b> weekly lessons, preparation for the Grade 12 preliminary (trial) exams, and revision for the final exams.';
+}
 /* ---------- index.html ---------- */
 const POPULAR = ['calculus', 'trig', 'euclid', 'analytical', 'functions', 'newton', 'circuits', 'organic-reactions'];
 const minFee = () => Math.min(...FEE_KEYS.map((k) => FEES[k]));
@@ -584,6 +603,10 @@ function buildIndex() {
       `<p>Yes. You can book lessons for Grade 10 and Grade 11 Mathematics, Physical Sciences and Life Sciences. ${anyLower ? `The <a href="${GRADES[10].file}">Grade 10</a> and <a href="${GRADES[11].file}">Grade 11</a> pages list the topics that have notes and exam-style questions in the portal, and how long each one takes to study${allLower ? '' : '; more topics are being added'}.` : 'Notes and exam-style questions for Grades 10 and 11 are being added to the portal.'} Grade 10 and 11 exams are set by your school or province and are written in June and November.</p>`],
     ['How do I pay for a lesson?',
       `<p>You pay only after the tutor has confirmed your booking, by EFT. The banking details and your payment reference are shown in the portal once your booking is accepted, and you upload your proof of payment there. The current fees are listed under Fees on this page and in the portal before you request a lesson.</p>`],
+    ['Do you offer lesson bundles?',
+      `<p>Yes. Buy ${andList(BUNDLES.map((o) => o.hours + ' lesson hours for ' + rand(o.price)))} – ${andList(BUNDLES.map((o) => rand(o.price / o.hours)))} an hour instead of ${rand(minFee())}. Request a bundle in the portal under Book; once the tutor accepts it, pay by EFT, and every lesson you book after that is taken from your bundle. Lessons you cancel in time go back onto your bundle.</p>`],
+    ['Can a parent book for their child?',
+      `<p>Yes. Create the account with your child’s name and grade and add your own number as the parent’s number – you can request lessons and see the payment details there. Or message us on WhatsApp with the grade, subject and times that suit, and we set up the account and book the lesson for you.</p>`],
     ['What do I need for an online lesson?',
       `<p>A phone, tablet or computer with a camera and microphone (earphones help), a stable internet or mobile-data connection, and your calculator, textbook and paper. The classroom runs in the browser; on a phone you may be asked to install the free Jitsi Meet app the first time.</p>`],
     ['Can I book on my phone?',
@@ -617,6 +640,7 @@ function buildIndex() {
       { '@type': 'Offer', name: 'One-on-one lesson', price: minFee(), priceCurrency: 'ZAR', url: BASE + SIGNUP, availability: 'https://schema.org/InStock',
         areaServed: { '@type': 'Country', name: 'South Africa', identifier: 'ZA' },
         priceSpecification: { '@type': 'UnitPriceSpecification', price: minFee(), priceCurrency: 'ZAR', unitText: 'per hour', unitCode: 'HUR' } },
+      ...BUNDLES.map((o) => ({ '@type': 'Offer', name: o.hours + ' lesson hours (bundle)', price: o.price, priceCurrency: 'ZAR', url: BASE + SIGNUP, availability: 'https://schema.org/InStock' })),
       { '@type': 'Offer', name: 'Group class seat', priceCurrency: 'ZAR', url: BASE + SIGNUP,
         priceSpecification: { '@type': 'PriceSpecification', minPrice: FEES.group, priceCurrency: 'ZAR', unitText: 'per seat' } },
     ],
@@ -670,13 +694,14 @@ ${topbar({ current: 'index' })}
 <section class="hero" aria-labelledby="h1">
 <div class="hero-grid">
 <div>
-<p class="eyebrow">CAPS · Grades 10–12 · NSC finals 2026 · Live online lessons</p>
+<p class="eyebrow">CAPS · Grades 10–12 · Live online lessons anywhere in South Africa</p>
 <h1 id="h1" style="margin-top:10px">Grade 12 Maths, Physical Sciences &amp; Life Sciences tutoring online</h1>
-<p class="lead">Live one-on-one lessons for matric learners anywhere in South Africa – and for Grades 10 and 11 too. Between lessons, keep practising with study notes, step-by-step worked examples and ${N.qs} exam-style questions with memos.</p>
-<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn lg" href="${PORTAL}">Sign in</a><a class="btn wa lg" href="#" data-wa hidden target="_blank" rel="noopener">${svg(IC.chat)}WhatsApp us</a></div>
+<p class="lead">Live one-on-one lessons with a tutor for matric learners – and for Grades 10 and 11. Book a time in the portal and pay only after the tutor confirms it. Between lessons, keep practising with study notes, step-by-step worked examples and ${N.qs} exam-style questions with memos.</p>
+<p class="now-booking">${svg(IC.cal)}<span>${season()}</span></p>
+<div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Book a lesson</a><a class="btn wa lg" href="#" data-wa hidden target="_blank" rel="noopener">${svg(IC.chat)}WhatsApp us</a><a class="btn lg" href="${PORTAL}">Sign in</a></div>
 <ul class="facts" aria-label="At a glance">
 <li><b data-fee-from>${rand(minFee())}</b> per hour, one-on-one</li>
-<li>Group classes from <b data-fee="group">${rand(FEES.group)}</b></li>
+<li data-bundle="${BUNDLES.length - 1}" data-k="card"><b><span data-bundle="${BUNDLES.length - 1}" data-k="hours">${BUNDLES[BUNDLES.length - 1].hours}</span> lesson hours for <span data-bundle="${BUNDLES.length - 1}" data-k="price">${rand(BUNDLES[BUNDLES.length - 1].price)}</span></b></li>
 <li>60, 90 or 120 minutes</li>
 <li>Grades 10, 11 and 12</li>
 <li>Maths, Physical Sciences and Life Sciences</li>
@@ -699,19 +724,21 @@ ${topbar({ current: 'index' })}
 <section class="sec" aria-labelledby="how">
 <div class="sec-head"><p class="eyebrow">How booking works</p><h2 id="how">From sign-up to your first lesson in five steps</h2></div>
 <ol class="steps">${steps.map(([h, p]) => `<li><h3>${h}</h3><p>${p}</p></li>`).join('')}</ol>
+<div class="note" data-wa-only hidden>${svg(IC.chat)}<p><b>Prefer WhatsApp?</b> Parents and learners can simply send us the grade, the subject and the days and times that suit – we create the account and book the lesson for you. <a href="#" data-wa hidden target="_blank" rel="noopener">WhatsApp us</a></p></div>
 <div class="note">${svg(IC.phone)}<p><b>Install it as an app.</b> On Android open the portal in Chrome and choose <b>Install app</b>; on iPhone open it in Safari, tap <b>Share</b> and then <b>Add to Home Screen</b>.</p></div>
 </section>
 
 <section class="sec" id="fees" aria-labelledby="fees-h">
-<div class="sec-head"><p class="eyebrow">Fees</p><h2 id="fees-h">Simple hourly fees, paid after your booking is confirmed</h2><p>One-on-one lessons are priced per hour and run for 60, 90 or 120 minutes. The fee depends on the subject, not the grade – the same for Grades 10, 11 and 12.</p></div>
+<div class="sec-head"><p class="eyebrow">Fees</p><h2 id="fees-h">Simple hourly fees, paid after your booking is confirmed</h2><p>One-on-one lessons are priced per hour and run for 60, 90 or 120 minutes. The fee depends on the subject, not the grade – the same for Grades 10, 11 and 12. Booking several lessons? A bundle of lesson hours costs less per hour.</p></div>
 <div class="fees">
 ${feeCard('maths', 'Mathematics', 'Paper 1 and 2')}
 ${feeCard('phys', 'Physics', 'Physical Sciences P1')}
 ${feeCard('chem', 'Chemistry', 'Physical Sciences P2')}
 ${feeCard('life', 'Life Sciences', 'Paper 1 and 2')}
+${BUNDLES.map((o, i) => `<article class="card fee bundle" data-bundle="${i}" data-k="card"><span class="pill accent">Lesson bundle</span><h3><span data-bundle="${i}" data-k="hours">${o.hours}</span> lesson hours</h3><p class="price"><b data-bundle="${i}" data-k="price">${rand(o.price)}</b><span>paid once</span></p><p><b data-bundle="${i}" data-k="rate">${rand(o.price / o.hours)}</b> per hour – any subject and grade, in 60, 90 or 120-minute lessons booked whenever you need them.</p></article>`).join('\n')}
 <article class="card fee"><span class="pill accent">Group class</span><h3>Group class seat</h3><p class="price"><span>from</span><b id="fee-group" data-fee="group">${rand(FEES.group)}</b><span>per seat</span></p><p>Online group classes on set topics, scheduled by the tutor. Seats are limited and the price is shown on each class.</p></article>
 </div>
-<div class="note">${svg(IC.lock)}<p><b>How payment works.</b> Request a lesson first – you pay nothing yet. Once the tutor accepts, pay by EFT using the banking details and payment reference shown with your booking in the portal, then upload your proof of payment there.</p></div>
+<div class="note">${svg(IC.lock)}<p><b>How payment works.</b> Request a lesson or a bundle first – you pay nothing yet. Once the tutor accepts, pay by EFT using the banking details and payment reference shown in the portal, then upload your proof of payment there. With a bundle, every lesson you book is taken from your lesson hours – no payment per lesson.</p></div>
 </section>
 
 <section class="sec" aria-labelledby="subjects">

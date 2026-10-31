@@ -56,7 +56,8 @@
     const P = period(); const all = one(); const L = all.filter(inP(P));
     const sum = (arr) => arr.reduce((n, b) => n + mins(b), 0) / 60;
     const bk = L.filter(booked), fin = L.filter(delivered), up = L.filter(upcomingB), nl = L.filter(notLogged), cx = L.filter((b) => b.status === 'cancelled' || b.status === 'declined'), wait = L.filter((b) => b.status === 'pending');
-    const fees = fin.reduce((n, b) => n + Number(b.fee || 0), 0); const paid = fin.filter((b) => b.paid).reduce((n, b) => n + Number(b.fee || 0), 0);
+    const inPk = (d) => { if (!d) return false; const k = fmt.key(d); return k >= P.from && k <= P.to; };
+    const fees = (state.bookings || []).filter((b) => b.paid && inPk(b.paid_at)).reduce((n, b) => n + Number(b.fee || 0), 0); const bund = (state.bundles || []).filter((bu) => bu.paid && inPk(bu.paid_at)).reduce((n, bu) => n + Number(bu.price || 0), 0);
     const inv = (state.invoices || []).filter((x) => x.issue_date >= P.from && x.issue_date <= P.to).reduce((n, x) => n + Number(x.total || 0), 0);
     const kpi = (label, val, sub) => '<div class="cd kpi"><span class="eyebrow">' + label + '</span><div class="big">' + val + '</div>' + (sub ? '<span class="small muted">' + sub + '</span>' : '') + '</div>';
     const seg = (k, l) => '<button class="' + ((state.anP || {}).k === k ? 'on' : '') + '" data-action="an-p" data-id="' + k + '">' + l + '</button>';
@@ -92,7 +93,7 @@
       (custom ? '<div class="row" style="gap:8px"><label class="small" for="an-from">From</label>' + ADV.dateSelect('an-from', P.from, { back: 400, days: 60 }) + '<label class="small" for="an-to">to</label>' + ADV.dateSelect('an-to', P.to, { back: 400, days: 60 }) + '</div>' : '') +
       '<p class="small muted">' + esc(P.label) + ': ' + esc(shortDate(P.from)) + ' – ' + esc(shortDate(P.to)) + '</p>' +
       '<div class="grid cols-4">' + kpi('Booked', bk.length, hrs(sum(bk))) + kpi('Finished', fin.length, hrs(sum(fin)) + ' taught') + kpi('Upcoming', up.length, hrs(sum(up))) + kpi('Not logged yet', nl.length, nl.length ? 'ended, no log' : 'all logged') + '</div>' +
-      '<div class="grid cols-4">' + kpi('Cancelled / declined', cx.length) + kpi('Requests waiting', wait.length) + kpi('Learner fees (finished)', fmt.rand(fees), fmt.rand(paid) + ' paid') + kpi('Invoiced to sponsors', fmt.rand(inv), 'invoices dated in this period') + '</div>' +
+      '<div class="grid cols-4">' + kpi('Cancelled / declined', cx.length) + kpi('Requests waiting', wait.length) + kpi('Received from learners', fmt.rand(fees + bund), (bund ? fmt.rand(bund) + ' from bundles · ' : '') + 'paid in this period') + kpi('Invoiced to sponsors', fmt.rand(inv), 'invoices dated in this period') + '</div>' +
       (flags.length ? '<div class="card an-flags"><h3>Flags</h3><ul>' + flags.join('') + '</ul><p class="small muted">Tutors may book beyond the allocated hours; they are shown here so you can top up the allocation (Tutors → Assign a learner) or speak to the tutor.</p></div>' : '') +
       '<div class="card"><h3>By tutor</h3>' + tutorTable + '</div>' +
       '<div class="card"><h3>By learner</h3>' + learnerTable + '</div>' +
