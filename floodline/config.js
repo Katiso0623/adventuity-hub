@@ -40,5 +40,5 @@ window.FL_CONFIG = {
   // The Studio is shipped encrypted; the key is released only to signed-in administrators (Supabase row-level security).
   // Satellite imagery for the map and the plan drawing (Esri World Imagery). Add an ArcGIS Location Platform key for commercial use.
   imagery: { esriKey: '' },
-  studio: { bundle: 'js/studio.bundle.enc?v=20261031093249', passcodeSha256: '' },
+  studio: { bundle: 'js/studio.bundle.enc?v=20261031093559', passcodeSha256: '' },
 };

@@ -1210,6 +1210,8 @@
     } catch (e) { console.error(e); }
   }
   let checkMap = null, lastCheck = null;
+  const here = location.href.split('#')[0];
+  const landingPage = () => { let l = here; try { l = sessionStorage.fl_landing || here; } catch (e) {   } return (l === here ? l : l + ' > ' + location.pathname).slice(0, 200); };
   async function runCheck(useDemo) {
     const out = $('#chk-out'), btn = $('#chk-go');
     let prov, site;
@@ -1335,7 +1337,7 @@
         size_ha: val('q-size') ? parseFloat(val('q-size')) : null, deadline: val('q-deadline'), referral: val('q-ref'), notes: val('q-notes'),
         consent: $('#q-consent').checked ? 'yes' : '', website: val('q-website'), started_at: val('q-started'),
         screening: lastCheck && !lastCheck.demo ? { level: lastCheck.r.level, stream_m: lastCheck.r.stream ? Math.round(lastCheck.r.stream.dist) : null, catchment_km2: lastCheck.r.stream ? +lastCheck.r.stream.areaKm2.toFixed(2) : null, hand_m: +(lastCheck.r.siteHAND || 0).toFixed(1) } : null,
-        page: location.href.split('#')[0].slice(0, 200),
+        page: landingPage(),
       };
       const errs = [];
       if (data.full_name.length < 2) errs.push('your name');
