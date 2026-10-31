@@ -32,12 +32,13 @@ window.FL_CONFIG = {
   ],
   // Google Ads account 540-666-2849: the Google tag is loaded on every public page and each quote request fires the
   // "Request quote" conversion (conversion type ID 7883804816). Neither value is secret.
-  ads: { gtagId: 'AW-18547560118', conversionLabel: 'T4zcCJChpa8dELadlYxF' },
+  // metaPixelId: paste the Meta (Facebook/Instagram) pixel ID here once the Meta ads account exists; quote requests then fire a "Lead" event.
+  ads: { gtagId: 'AW-18547560118', conversionLabel: 'T4zcCJChpa8dELadlYxF', metaPixelId: '' },
   // Default report details in the Studio (editable per job).
   report: { preparedBy: 'J.K. Mokoena', initials: 'JKM', engineer: 'Kananelo Moloi, Pr Eng', ecsa: '202403242', drawingPrefix: 'ADV-FL', reportPrefix: 'ADV-FL' },
   // Optional light gate for the Studio page: SHA-256 hex of a passcode. Leave empty for no gate.
   // The Studio is shipped encrypted; the key is released only to signed-in administrators (Supabase row-level security).
   // Satellite imagery for the map and the plan drawing (Esri World Imagery). Add an ArcGIS Location Platform key for commercial use.
   imagery: { esriKey: '' },
-  studio: { bundle: 'js/studio.bundle.enc?v=20261031083522', passcodeSha256: '' },
+  studio: { bundle: 'js/studio.bundle.enc?v=20261031093249', passcodeSha256: '' },
 };

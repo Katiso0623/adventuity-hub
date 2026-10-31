@@ -1355,6 +1355,7 @@
         $('#q-done').hidden = false; $('#q-done-ref').textContent = j.ref; f.hidden = true;
         $('#q-done').scrollIntoView({ block: 'center' });
         const ads = CFG.ads || {}; if (ads.gtagId && ads.conversionLabel && window.gtag) window.gtag('event', 'conversion', { send_to: ads.gtagId + '/' + ads.conversionLabel });
+        if (ads.metaPixelId && window.fbq) window.fbq('track', 'Lead', { content_name: 'Flood line quote request' });
         return;
       }
       if (r && j.error && r.status !== 404) { msg.innerHTML = '<p class="note err">' + esc(j.error) + '</p>'; return; }
