@@ -306,7 +306,7 @@ const ok = (c, m) => { if (!c) throw new Error('FAILED: ' + m); log('ok', m); };
   await A.page.goto(BASE + '#bookings'); await A.page.reload(); await A.page.waitForSelector('text=Covered cubic graphs'); ok(true, 'admin sees the tutor\'s log on the booking');
 
   step = 'admin-add-learner';
-  await A.page.goto(BASE + '#learners'); await A.page.reload(); await A.page.click('[data-action="acc-new"][data-role="learner"]');
+  await A.page.goto(BASE + '#learners'); await A.page.waitForLoadState('networkidle').catch(() => null); await A.page.reload(); await A.page.click('[data-action="acc-new"][data-role="learner"]');
   await A.page.fill('#ac-name', 'Priscilla Ngoie'); await A.page.fill('#ac-email', 'priscilla@example.com'); await A.page.fill('#ac-phone', '061 000 1111'); await A.page.fill('#ac-school', 'The Settlers High School');
   await A.page.click('#f-acc button[type=submit]'); await A.page.waitForSelector('text=Learner account created');
   const lpw = await A.page.$eval('.creds code', (e) => (e.textContent.match(/Password: (\S+)/) || [])[1]);
