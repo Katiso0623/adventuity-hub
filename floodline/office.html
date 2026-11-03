@@ -1,0 +1,67 @@
+<!doctype html><html lang="en-ZA"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clients and finances | Adventuity Floodline</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#1c3246">
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap"><link rel="stylesheet" href="./css/site.css?v=20261103180000">
+<style>
+:root{--s1:#1f63c6;--s2:#c98200}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--s1:#5b95e6;--s2:#b87c14}}
+:root[data-theme="dark"]{--s1:#5b95e6;--s2:#b87c14}
+body{background:var(--paper)}
+.adm{max-width:1180px;margin:0 auto;padding:22px 16px 60px;color:var(--ink)}
+.adm h1{font:700 clamp(26px,4vw,34px)/1.1 var(--f-display);margin:4px 0 6px;color:var(--ink)}
+.adm h2{font:700 21px var(--f-display);margin:22px 0 8px;letter-spacing:.02em}
+.adm h3{font:700 17px var(--f-display);margin:4px 0 8px}
+.adm p{margin:6px 0}.adm .muted{color:var(--muted);font-size:14px}
+.adm .b{display:inline-flex;align-items:center;gap:6px;font:700 14px var(--f-display);letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:8px 13px;border:2px solid var(--ink);background:var(--sheet);color:var(--ink);cursor:pointer;text-decoration:none;white-space:nowrap}
+.adm .b.red{background:var(--flood);border-color:var(--flood);color:#fff}.adm .b.sm{padding:5px 9px;font-size:12px}.adm .b:disabled{opacity:.55;cursor:default}
+.adm .tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--rule);margin:14px 0 0}
+.adm .tabs button{font:700 15px var(--f-display);letter-spacing:.05em;text-transform:uppercase;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:10px 12px;color:var(--muted);cursor:pointer}
+.adm .tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--flood)}
+.adm .tabs .n{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--flood);color:#fff;font-size:12px;margin-left:4px}
+.adm .card{background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:16px;margin:12px 0}
+.adm .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.adm .bar .grow{flex:1 1 200px}
+.adm .msg{font-size:14px;padding:8px 12px;border-left:3px solid var(--amber);margin:8px 0;display:none}
+.adm .msg.show{display:block}.adm .msg.err{border-color:var(--flood)}.adm .msg.good{border-color:var(--ok)}
+.adm table{width:100%;border-collapse:collapse;font-size:14px}
+.adm th,.adm td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--rule);vertical-align:top;overflow-wrap:anywhere}
+.adm th{font-weight:700;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.adm td.r,.adm th.r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.adm tr.click{cursor:pointer}.adm tr.click:hover td{background:var(--chip)}
+.adm .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.adm .tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 7px;border-radius:10px;background:var(--chip);white-space:nowrap}
+.adm .tag.paid,.adm .tag.active,.adm .tag.won,.adm .tag.income{background:rgba(47,125,79,.16);color:var(--ok)}
+.adm .tag.unpaid,.adm .tag.lead,.adm .tag.quoted,.adm .tag.due{background:rgba(201,130,0,.18);color:#9a6400}
+.adm .tag.cancelled,.adm .tag.lost,.adm .tag.do-not-contact,.adm .tag.expense{background:rgba(200,54,43,.13);color:var(--flood)}
+.adm .sub{font-size:13px;color:var(--muted);margin-top:2px}
+.adm input,.adm select,.adm textarea{font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--rule);border-radius:4px;background:var(--sheet);color:var(--ink);min-width:0;width:100%;box-sizing:border-box}
+.adm textarea{min-height:90px}
+.adm label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.adm .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.adm .grid .wide{grid-column:1/-1}
+.adm .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin:12px 0}
+.adm .kpi{background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:12px 14px}
+.adm .kpi .k{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+.adm .kpi .v{font:700 28px/1.15 var(--f-display);margin-top:4px;font-variant-numeric:tabular-nums}
+.adm .kpi .s{font-size:13px;color:var(--muted)}
+.adm .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.adm .two .card{margin:0}
+.hb{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:6px 10px;align-items:center;font-size:14px}
+.hb .lb{overflow-wrap:anywhere}.hb .tr{height:14px;position:relative}
+.hb .fl{height:14px;background:var(--s1);border-radius:0 4px 4px 0;min-width:2px}
+.hb .vl{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.vc{position:relative}.vc svg{display:block;max-width:100%;overflow:visible}
+.vc .ax{fill:var(--muted);font-size:11px}.vc .gl{stroke:var(--rule);stroke-width:1}
+.vc .m1{fill:var(--s1)}.vc .m2{fill:var(--s2)}.vc .hit{fill:transparent;cursor:default}
+.vc .hit:hover+.hl,.vc .hl.on{fill:var(--chip)}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:2px 0 6px}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--paper);font-size:13px;padding:6px 9px;border-radius:4px;z-index:50;display:none;max-width:240px;line-height:1.35}
+.adm .gate{max-width:420px;margin:40px auto}.adm .gate input{margin-bottom:10px}
+details.tbl summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:8px}
+@media (max-width:640px){.adm th.hide,.adm td.hide{display:none}}
+</style></head><body>
+<header class="top"><div class="wrap"><a class="brand" href="./" aria-label="Adventuity Floodline home"><div><b>Adventuity</b><span>Floodline</span></div></a>
+<nav class="nav" aria-label="Main"><a href="studio.html">Studio</a><a href="pricing.html">Pricing</a><a href="./">Public website</a></nav></div></header>
+<main class="adm" id="adm"><span class="label">Administrator</span><h1>Clients and finances</h1><p class="muted">Loading…</p></main>
+<div class="tip" id="tip" role="tooltip"></div>
+<script src="config.js?v=20261103180000"></script><script src="js/office.js?v=20261103200000"></script></body></html>
