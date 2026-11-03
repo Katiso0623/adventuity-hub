@@ -10,7 +10,7 @@ window.FL_CONFIG = {
     logo: '',                      // optional: path to your logo image, e.g. 'assets/logo.png'
   },
   // Shown on the public website only when filled in.
-  contact: { phone: '063 497 7649', whatsapp: '27634977649', email: 'Nthastara@yahoo.com', area: 'Gauteng, Free State and nationwide' },
+  contact: { phone: '063 497 7649', whatsapp: '27634977649', email: 'info@adventuity.co.za', area: 'Gauteng, Free State and nationwide' },
   // Quote requests are sent to this secure form function in your Adventuity Supabase project.
   quotes: {
     endpoint: 'https://sxbpjowkcpysoxurfqzo.supabase.co/functions/v1/floodline-quote',
