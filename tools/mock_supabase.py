@@ -157,13 +157,30 @@ class H(SimpleHTTPRequestHandler):
             role = run("select role from public.profiles where id = %s" % lit(uid or '00000000-0000-0000-0000-000000000000'), 'service')
             if role == 'tutor':   # mirrors the tutor rules in backend/functions/admin-users
                 if b.get('action') == 'create_account':
-                    subs = [x for x in (b.get('subjects') or []) if x in ('maths', 'phys', 'chem', 'life')]
+                    al = None
+                    if b.get('allocation_id'):
+                        out = run("select row_to_json(a) from public.allocations a where id = %s and tutor_id = %s and status = 'assigned' and learner_id is null" % (lit(b['allocation_id']), lit(uid)), 'service')
+                        if not out: return self.reply(403, {'error': 'This learner is not waiting for a login from you – ask the director'})
+                        al = json.loads(out)
+                    subs = (['phys', 'chem'] if al['subject'] == 'phys' else [al['subject']]) if al else [x for x in (b.get('subjects') or []) if x in ('maths', 'phys', 'chem', 'life')]
                     if not subs: return self.reply(400, {'error': 'Choose the subject(s) you will teach this learner'})
-                    if run('select 1 from auth.users where lower(email) = lower(%s)' % lit(b.get('email')), 'service'): return self.reply(409, {'error': 'That e-mail already has an account – ask the director to assign this learner to you.'})
+                    def assign(lid):
+                        for x in subs:
+                            if al: run("insert into public.assignments (learner_id, tutor_id, subject, hours, share_contacts, allocation_id, active) values (%s, %s, %s, %s, true, %s, true) on conflict (learner_id, tutor_id, subject) do update set active = true, share_contacts = true, hours = excluded.hours, allocation_id = excluded.allocation_id" % (lit(lid), lit(uid), lit(x), 0 if x == 'chem' else float(al['hours'] or 0), lit(al['id'])), 'service')
+                            else: run('insert into public.assignments (learner_id, tutor_id, subject) values (%s, %s, %s) on conflict do nothing' % (lit(lid), lit(uid), lit(x)), 'service')
+                        if al:
+                            run("update public.allocations set learner_id = %s, status = 'active' where id = %s" % (lit(lid), lit(al['id'])), 'service')
+                            if al.get('sponsor_id'): run('update public.profiles set sponsor_id = %s where id = %s and sponsor_id is null' % (lit(al['sponsor_id']), lit(lid)), 'service')
+                    if run('select 1 from auth.users where lower(email) = lower(%s)' % lit(b.get('email')), 'service'):
+                        if al and str(al.get('email') or '').strip().lower() == str(b.get('email') or '').strip().lower():
+                            ex = run("select id from public.profiles where lower(email) = lower(%s) and role = 'learner'" % lit(b.get('email')), 'service')
+                            if not ex: return self.reply(409, {'error': 'That e-mail belongs to another kind of account – ask the director'})
+                            assign(ex.splitlines()[0]); return self.reply(200, {'ok': True, 'user_id': ex.splitlines()[0], 'subjects': subs, 'existing': True})
+                        return self.reply(409, {'error': 'That e-mail already has an account – ask the director to assign this learner to you.'})
                     meta = {'full_name': b.get('full_name', ''), 'phone': b.get('phone', ''), 'school': b.get('school', ''), 'pw': b['password']}
                     nid = run('insert into auth.users (email, raw_user_meta_data) values (%s, %s::jsonb) returning id' % (lit(b['email'].lower()), lit(json.dumps(meta))), 'service').splitlines()[0]
                     run("update public.profiles set approved = true, must_change_password = true, guardian_phone = %s, grade = %s, created_by = %s where id = %s" % (lit(b.get('guardian_phone', '')), int(b['grade']) if str(b.get('grade') or '') in ('10', '11', '12') else 'null', lit(uid), lit(nid)), 'service')
-                    run('insert into public.assignments (learner_id, tutor_id, subject) values ' + ', '.join('(%s, %s, %s)' % (lit(nid), lit(uid), lit(x)) for x in subs) + ' on conflict do nothing', 'service')
+                    assign(nid)
                     return self.reply(200, {'ok': True, 'user_id': nid, 'subjects': subs})
                 if b.get('action') == 'reset_password':
                     ok = run("select 1 from public.profiles p where p.id = %s and p.role = 'learner' and p.created_by = %s and p.must_change_password and exists (select 1 from public.assignments a where a.learner_id = p.id and a.tutor_id = %s and a.active)" % (lit(b['user_id']), lit(uid), lit(uid)), 'service')
@@ -212,12 +229,12 @@ class H(SimpleHTTPRequestHandler):
         return self.reply(200, {'ok': True, 'ref': out.strip()})
     def storage(self, method, path):
         uid = self.uid()
-        m = re.match(r'^/storage/v1/object/sign/([a-z]+)/(.+)$', path)
+        m = re.match(r'^/storage/v1/object/sign/([a-z-]+)/(.+)$', path)
         if m:
             ok = run("select count(*) from storage.objects where bucket_id = %s and name = %s" % (lit(m.group(1)), lit(unquote(m.group(2)))), uid)
             if ok != '1': return self.reply(400, {'message': 'Object not found'})
             return self.reply(200, {'signedURL': '/object/sign/%s/%s?token=test' % (m.group(1), m.group(2))})
-        m = re.match(r'^/storage/v1/object/([a-z]+)/(.+)$', path)
+        m = re.match(r'^/storage/v1/object/([a-z-]+)/(.+)$', path)
         if m and method == 'DELETE':
             run('delete from storage.objects where bucket_id = %s and name = %s' % (lit(m.group(1)), lit(unquote(m.group(2)))), uid); return self.reply(200, {'message': 'deleted'})
         if m and method == 'POST':

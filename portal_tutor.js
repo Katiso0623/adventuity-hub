@@ -8,7 +8,7 @@
 
   ADV.tutorInit = async function () { await loadMyLearners(); if (ADV.startPolling) ADV.startPolling(); };
   async function loadMyLearners() { try { state.myLearners = (await sb.rpc('tutor_learners', {})) || []; } catch (e) { state.myLearners = state.myLearners || []; } }
-  const reload = ADV.tutorReload = async () => { await ADV.loadBookings(); await loadMyLearners(); const y = window.scrollY; ADV.render(); window.scrollTo(0, y); };
+  const reload = ADV.tutorReload = async () => { await ADV.loadBookings(); await loadMyLearners(); if (ADV.loadMyAllocs) await ADV.loadMyAllocs(); const y = window.scrollY; ADV.render(); window.scrollTo(0, y); };
   const upcoming = () => state.bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) > now()).sort(byStart);
   const toLog = () => state.bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) <= now() && !b.delivered_at).sort(byStart);
   /* the tutor's default Meet link: saved on the profile and used for upcoming lessons that had no link of their own */
@@ -62,6 +62,7 @@
     return '<div class="stack"><div><span class="eyebrow">Tutor portal</span><h1>' + (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + esc(first) : '') + '</h1><p class="muted small" style="margin-top:4px">Your lessons and learners. At lesson time, tap Join, then present the Board in Google Meet.</p></div>' +
       (p.meet_link ? '' : '<form id="f-tmeet" class="card stack"><div class="row" style="flex-wrap:nowrap;align-items:flex-start">' + ICON.video + '<div><b>Add your Google Meet link</b><p class="small muted">Lessons the director gives you use your own Meet link, so you are the host and can let the learner in. On meet.google.com click <b>New meeting → Create a meeting for later</b>, copy the link and paste it here. You can reuse the same link for every lesson.</p></div></div><div class="row" style="flex-wrap:nowrap"><input id="tm-link" type="url" placeholder="https://meet.google.com/abc-defg-hij" aria-label="Google Meet link" required><button class="btn primary" type="submit">Save</button></div></form>') +
       '<div class="grid cols-4">' + kpi('Lessons in 7 days', week, 'tlessons') + kpi('Hours taught this month', (Math.round(hrs * 10) / 10).toString().replace('.', ','), 'tlessons') + kpi('My learners', new Set((state.myLearners || []).map((l) => l.learner_id)).size, 'tlearners') + kpi('Lessons to log', logs.length, 'tlessons') + '</div>' +
+      (ADV.newLearnersCard ? ADV.newLearnersCard(true) : '') +
       '<div class="row"><button class="btn primary" data-go="tab" data-id="tsched">' + ICON.cal + 'Schedule lessons</button><button class="btn" data-action="ta-open-l">' + ICON.plus + 'Add a learner</button></div>' +
       '<h2>' + (next && ADV.joinWindow(next).open ? 'Now' : 'Next lesson') + '</h2>' + (next ? card(next, true) : '<div class="card"><p class="muted">No lessons scheduled yet. Book the times you agreed with your learners under Schedule – or the director adds them – and they show up here.</p></div>') +
       (logs.length ? '<h2>Log these lessons</h2><p class="small muted" style="margin-top:-6px">Mark each lesson as delivered and note what you covered – the director uses this for reports and your pay.</p>' + logs.map((b) => card(b)).join('') : '') +
@@ -97,7 +98,7 @@
         (l.added_by_me && l.first_login_pending ? '<button class="btn sm ghost" data-action="t-pass" data-id="' + l.learner_id + '">New temporary password</button>' : '') + '</div></div>';
     }).join('');
     return '<div class="stack"><div><span class="eyebrow">Learners</span><h1>My learners</h1><p class="small muted">Learners you added and learners the director assigned to you, per subject. Contact details of the director\'s learners stay with the director – they get your lessons in their portal and a notification.</p></div>' +
-      (ADV.tutorCredsCard ? ADV.tutorCredsCard() : '') + (ADV.tutorAddForm ? ADV.tutorAddForm() : '') +
+      (ADV.tutorCredsCard ? ADV.tutorCredsCard() : '') + (ADV.tutorAddForm ? ADV.tutorAddForm() : '') + (ADV.newLearnersCard && !state.taForm ? ADV.newLearnersCard() : '') +
       (state.taForm ? '' : '<div class="row"><button class="btn primary" data-action="ta-open">' + ICON.plus + 'Add a learner</button></div>') +
       (items || '<div class="card"><p class="muted">No learners yet. Add a learner you teach, or the director assigns one to you.</p></div>') + '</div>';
   };

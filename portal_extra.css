@@ -199,3 +199,10 @@ details.card>summary::-webkit-details-marker{display:none}
 .bundle-row:last-child{border-bottom:0}
 .bundle-offer{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;display:grid;gap:8px;background:var(--surface)}
 .bundle-offer .price{font-weight:700;font-size:1.25rem;color:var(--ink)}
+/* tutors: hiring, allocations, pay */
+.hire-card h3{margin-top:6px}
+.alloc-list{padding:4px 16px}
+.alloc-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}
+.alloc-row:last-child{border-bottom:0}
+.alloc-row select{width:auto;max-width:260px}
+.callout-warn{border-color:var(--warn);background:linear-gradient(0deg,var(--warn-soft),var(--warn-soft)) padding-box}

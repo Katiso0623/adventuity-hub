@@ -146,13 +146,13 @@
   /* ================================================================ tutors add learners and hand out their login */
   const mySubjects = () => { const t = String(state.profile.tutor_subjects || '').split(',').filter((k) => SUBJ[k]); return t.length ? t : Object.keys(SUBJ); };
   function addForm() {
-    const f = state.taForm || {}; const subs = mySubjects();
+    const f = state.taForm || {}; const al = f.allocation_id ? (state.myAllocs || []).find((x) => x.id === f.allocation_id) : null; const subs = al ? [] : mySubjects();
     const inp = (id, label, type, ph, v, req, help) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'text') + '" placeholder="' + esc(ph || '') + '" value="' + esc(v || '') + '"' + (req ? ' required' : '') + '>' + (help ? '<span class="small muted">' + help + '</span>' : '') + '</div>';
-    return '<form id="f-tadd" class="card stack"><div><h3>Add a learner</h3><p class="small muted">Creates their login with a temporary password and links them to you. Send the login on WhatsApp – they choose their own password when they first sign in.</p></div><div class="grid cols-2">' +
+    return '<form id="f-tadd" class="card stack"><div><h3>' + (al ? 'Set up ' + esc(al.learner_name) + '\'s login' : 'Add a learner') + '</h3>' + (al ? '<p class="small">' + esc(ADV.allocSubjectName ? ADV.allocSubjectName(al.subject) : al.subject) + (Number(al.hours) ? ' · ' + esc(String(al.hours).replace('.', ',')) + ' hours' : '') + ' – from the director\'s allocation. Ask the learner for their e-mail address if it is missing.</p>' : '') + '<p class="small muted">Creates their login with a temporary password and links them to you. Send the login on WhatsApp – they choose their own password when they first sign in.</p></div><div class="grid cols-2">' +
       inp('ta-name', 'Name and surname', 'text', 'e.g. Thabo Mokoena', f.name, true) + inp('ta-email', 'E-mail (their login)', 'email', 'name@example.com', f.email, true) +
       inp('ta-phone', 'Learner\'s WhatsApp number', 'tel', '082 123 4567', f.phone, true) + inp('ta-gphone', 'Parent\'s WhatsApp number (optional)', 'tel', '083 765 4321', f.gphone) +
       inp('ta-school', 'School', 'text', 'e.g. Grey College', f.school) + '<div class="field"><label for="ta-grade">Grade</label>' + ADV.gradeSelect('ta-grade', f.grade || 12) + '</div>' +
-      '<div class="field" style="grid-column:1/-1"><label>Subjects you will teach them</label><div class="row" style="gap:12px">' + subs.map((k, i) => '<label class="check"><input type="checkbox" name="ta-subj" value="' + k + '"' + ((f.subjects ? f.subjects.includes(k) : i === 0) ? ' checked' : '') + '> ' + SUBJ[k].short + '</label>').join('') + '</div></div></div>' +
+      (al ? '</div>' : '<div class="field" style="grid-column:1/-1"><label>Subjects you will teach them</label><div class="row" style="gap:12px">' + subs.map((k, i) => '<label class="check"><input type="checkbox" name="ta-subj" value="' + k + '"' + ((f.subjects ? f.subjects.includes(k) : i === 0) ? ' checked' : '') + '> ' + SUBJ[k].short + '</label>').join('') + '</div></div></div>') +
       '<div class="row"><button class="btn primary" type="submit">Create the login</button><button class="btn" type="button" data-action="ta-cancel">Cancel</button></div></form>';
   }
   ADV.tutorAddForm = () => (state.taForm ? addForm() : '');
@@ -161,15 +161,18 @@
   async function saveAdd(e) {
     e.preventDefault(); const btn = e.target.querySelector('[type=submit]');
     const f = { name: val('ta-name').trim(), email: val('ta-email').trim().toLowerCase(), phone: val('ta-phone').trim(), gphone: val('ta-gphone').trim(), school: val('ta-school').trim(), grade: Number(val('ta-grade')) || null, subjects: $$('input[name="ta-subj"]:checked').map((x) => x.value) };
+    const alloc = (state.taForm && state.taForm.allocation_id) || null; f.allocation_id = alloc;
     state.taForm = f;
-    if (!f.subjects.length) return toast('Choose at least one subject');
+    if (!alloc && !f.subjects.length) return toast('Choose at least one subject');
     if (String(f.phone).replace(/\D/g, '').length < 9) return toast('Enter the learner\'s WhatsApp number');
     const password = 'Adv-' + rid(6); btn.disabled = true;
     try {
-      const r = await sb.fn('admin-users', { action: 'create_account', role: 'learner', full_name: f.name, email: f.email, phone: f.phone, guardian_phone: f.gphone, school: f.school, grade: f.grade, subjects: f.subjects, password });
-      state.tCreds = { learner_id: r.user_id, name: f.name, email: f.email, phone: f.phone, gphone: f.gphone, password, subject: (r.subjects || f.subjects)[0] };
+      const r = await sb.fn('admin-users', Object.assign({ action: 'create_account', role: 'learner', full_name: f.name, email: f.email, phone: f.phone, guardian_phone: f.gphone, school: f.school, grade: f.grade, subjects: f.subjects, password }, alloc ? { allocation_id: alloc } : {}));
+      state.tCreds = r.existing ? null : { learner_id: r.user_id, name: f.name, email: f.email, phone: f.phone, gphone: f.gphone, password, subject: (r.subjects || f.subjects)[0] };
+      if (r.existing) toast(f.name + ' already had a login – linked to you. Schedule the lessons now.', 6000);
+      if (ADV.loadMyAllocs) await ADV.loadMyAllocs();
       state.taForm = null; await ADV.tutorReload();
-      state.tsf = { key: r.user_id + '|' + state.tCreds.subject }; S.reset('ts'); state.tsDone = null;
+      state.tsf = { key: r.user_id + '|' + (r.subjects || f.subjects)[0] }; S.reset('ts'); state.tsDone = null;
       if (state.tab !== 'tsched') ADV.go('tsched'); else { ADV.render(); window.scrollTo({ top: 0 }); }
     } catch (err) { btn.disabled = false; toast(ADV.errMsg(err), 6000); }
   }
