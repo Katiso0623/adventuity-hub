@@ -1,8 +1,34 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Secure payment | Adventuity Floodline</title><meta name="description" content="Pay your Adventuity Floodline invoice securely online."><meta name="theme-color" content="#1c3246"><meta name="robots" content="noindex">
 <meta property="og:type" content="website"><meta property="og:url" content="https://www.adventuity.com/pay.html"><meta property="og:title" content="Secure payment | Adventuity Floodline"><meta property="og:description" content="Pay your Adventuity Floodline invoice securely online."><meta property="og:image" content="https://www.adventuity.com/assets/og.png"><meta property="og:site_name" content="Adventuity Floodline"><meta property="og:locale" content="en_GB"><meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap"><link rel="stylesheet" href="./css/site.css?v=20261031093230"></head><body>
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap"><link rel="stylesheet" href="./css/site.css?v=20261031093230"><style>
+.pay-eft{margin-top:22px;padding-top:18px;border-top:1px solid var(--rule)}
+.pay-eft h2{font:700 20px var(--f-display);letter-spacing:.02em;margin:0 0 10px;color:var(--navy)}
+.pay-bank{display:grid;grid-template-columns:132px 1fr;gap:6px 14px;margin:0 0 10px;padding:12px 14px;background:rgba(20,34,49,.04);border:1px solid var(--rule);border-radius:6px}
+.pay-bank dt{color:var(--muted);font-size:14px}
+.pay-bank dd{margin:0;font-weight:600;font-family:'IBM Plex Mono',ui-monospace,monospace;overflow-wrap:anywhere}
+.pay-bank dd.ref{color:var(--flood);font-size:18px}
+.pay-actions{margin:10px 0}
+.pay-eft-form label{display:block;font-size:14px;color:var(--muted);margin:12px 0 6px}
+.pay-eft-row{display:flex;gap:8px;flex-wrap:wrap}
+.pay-eft-row input{flex:1 1 220px;min-width:0;padding:10px 12px;border:1px solid var(--rule);border-radius:4px;font:inherit}
+.pay-ok.soft{border-color:var(--water);background:rgba(44,110,160,.08)}
+.pay-ok.soft b{color:var(--navy)}
+.pay-admin{margin-top:22px;padding:12px 14px;border:1px dashed var(--navy);border-radius:6px;background:rgba(20,34,49,.03)}
+.pay-admin p{margin:4px 0}
+.pay-quote{margin:0 0 18px}
+.pay-quote h2{font:700 20px var(--f-display);letter-spacing:.02em;margin:0 0 8px;color:var(--navy)}
+.pay-quote table{width:100%;border-collapse:collapse;font-size:15px}
+.pay-quote td,.pay-quote th{padding:7px 0;border-bottom:1px solid var(--rule);vertical-align:top;text-align:left}
+.pay-quote td:last-child,.pay-quote th:last-child{text-align:right;white-space:nowrap;padding-left:12px;font-family:'IBM Plex Mono',ui-monospace,monospace}
+.pay-quote td small{display:block;color:var(--muted);font-size:13px}
+.pay-quote tfoot th{font-weight:700;border-bottom:2px solid var(--navy)}
+.pay-quote tr.opt td{color:var(--muted);font-style:italic}
+.pay-quote details{margin-top:8px}.pay-quote summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:14px}
+.pay-list{margin:4px 0 8px 18px;padding:0;font-size:14px;color:var(--muted)}
+@media (max-width:480px){.pay-bank{grid-template-columns:1fr}.pay-bank dt{margin-top:4px}}
+</style></head><body>
 <header class="top"><div class="wrap"><a class="brand" href="./" aria-label="Adventuity Floodline home"><div><b>Adventuity</b><span>Floodline</span></div></a>
 <nav class="nav" aria-label="Main"><a href="./#check">Free check</a><a href="./#deliver">What you get</a><a href="./#areas">Areas</a><a href="./#faq">FAQ</a></nav><a class="btn red" href="./#quote">Request a quote</a></div></header>
-<main><section class="band pay"><div class="wrap"><div class="pay-card" id="pay-root"><span class="label">Secure payment</span><h1>Adventuity Floodline</h1><p class="lead" id="pay-msg">Loading your invoice…</p></div></div></section><script src="config.js?v=20261031093230"></script><script src="js/pay.js?v=20261031093230"></script></main>
-<footer class="foot"><div class="wrap"><div><b>Adventuity</b><div>Transforming ideas into reality.</div><div style="margin-top:8px">Adventuity (Pty) Ltd · Civil engineering and water</div></div><div style="text-align:right"><div><a href="./#quote">Request a quote</a> · <a href="./#check">Free flood check</a></div><div>© 2026 Adventuity (Pty) Ltd</div></div></div></footer><script src="./config.js?v=20261031093230"></script><script>(function(){var a=(window.FL_CONFIG||{}).ads||{};if(!a.gtagId)return;var s=document.createElement("script");s.async=true;s.src="https://www.googletagmanager.com/gtag/js?id="+a.gtagId;document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag("js",new Date());gtag("config",a.gtagId);})();</script></body></html>
+<main><section class="band pay"><div class="wrap"><div class="pay-card" id="pay-root"><span class="label">Secure payment</span><h1>Adventuity Floodline</h1><p class="lead" id="pay-msg">Loading your invoice…</p></div></div></section><script src="config.js?v=20261103163000"></script><script src="js/pay.js?v=20261103180000"></script></main>
+<footer class="foot"><div class="wrap"><div><b>Adventuity</b><div>Transforming ideas into reality.</div><div style="margin-top:8px">Adventuity (Pty) Ltd · Civil engineering and water</div></div><div style="text-align:right"><div><a href="./#quote">Request a quote</a> · <a href="./#check">Free flood check</a></div><div>© 2026 Adventuity (Pty) Ltd</div></div></div></footer><script src="./config.js?v=20261103163000"></script><script>(function(){var a=(window.FL_CONFIG||{}).ads||{};if(!a.gtagId)return;var s=document.createElement("script");s.async=true;s.src="https://www.googletagmanager.com/gtag/js?id="+a.gtagId;document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag("js",new Date());gtag("config",a.gtagId);})();</script></body></html>

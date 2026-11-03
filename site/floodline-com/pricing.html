@@ -1,0 +1,52 @@
+<!doctype html><html lang="en-ZA"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pricing and quotations | Adventuity Floodline</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#1c3246">
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap"><link rel="stylesheet" href="./css/site.css?v=20261103180000">
+<style>
+.adm{max-width:1120px;margin:0 auto;padding:22px 16px 60px}
+.adm h1{font:700 clamp(26px,4vw,34px)/1.1 var(--f-display);margin:4px 0 6px;color:var(--navy)}
+.adm h2{font:700 21px var(--f-display);color:var(--navy);margin:22px 0 8px;letter-spacing:.02em}
+.adm h3{font:700 17px var(--f-display);color:var(--navy);margin:14px 0 6px}
+.adm p{margin:6px 0}.adm .muted{color:var(--muted);font-size:14px}
+.adm .b{display:inline-flex;align-items:center;gap:6px;font:700 14px var(--f-display);letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:8px 13px;border:2px solid var(--navy);background:#fff;color:var(--navy);cursor:pointer;text-decoration:none;white-space:nowrap}
+.adm .b.red{background:var(--flood);border-color:var(--flood);color:#fff}.adm .b.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.adm .b:disabled{opacity:.55;cursor:default}.adm .b.sm{padding:5px 9px;font-size:12px}
+.adm .tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--rule);margin:14px 0 0}
+.adm .tabs button{font:700 15px var(--f-display);letter-spacing:.05em;text-transform:uppercase;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:10px 12px;color:var(--muted);cursor:pointer}
+.adm .tabs button[aria-selected=true]{color:var(--navy);border-bottom-color:var(--flood)}
+.adm .tabs .n{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--flood);color:#fff;font-size:12px;margin-left:4px}
+.adm .card{background:var(--sheet,#fff);border:1px solid var(--rule);border-radius:8px;padding:16px;margin:12px 0}
+.adm .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+.adm .msg{font-size:14px;padding:8px 12px;border-left:3px solid var(--amber);margin:8px 0;display:none}
+.adm .msg.show{display:block}.adm .msg.err{border-color:var(--flood)}.adm .msg.good{border-color:var(--ok)}
+.adm table{width:100%;border-collapse:collapse;font-size:14px}
+.adm th,.adm td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--rule);vertical-align:top}
+.adm th{font-weight:700;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.adm td.r,.adm th.r{text-align:right;white-space:nowrap}
+.adm .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.adm .tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 7px;border-radius:10px;background:#e9eef3;color:var(--navy);white-space:nowrap}
+.adm .tag.sent,.adm .tag.paid{background:rgba(47,125,79,.14);color:var(--ok)}.adm .tag.manual,.adm .tag.error,.adm .tag.eft{background:rgba(196,61,48,.12);color:var(--flood)}
+.adm .tag.waiting,.adm .tag.unpaid{background:rgba(201,140,30,.16);color:#8a5d06}
+.adm .adm-sub{font-size:13px;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
+.adm td.act{text-align:right;width:1%}.adm td.act .b{margin:0 0 6px 6px}
+.adm td{overflow-wrap:anywhere}.adm td:first-child b{white-space:nowrap}
+.adm input,.adm select,.adm textarea{font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--rule);border-radius:4px;background:#fff;color:var(--ink);min-width:0}
+.adm input[type=number]{width:110px}.adm input.w-s{width:80px}.adm input.w-l{width:100%}
+.adm label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.adm .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.adm .chk{display:flex;gap:8px;align-items:center;font-size:15px;color:var(--ink)}.adm .chk input{flex:none;width:18px;height:18px;margin:0}
+.adm .bands{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.adm .band{display:inline-flex;gap:4px;align-items:center;border:1px solid var(--rule);border-radius:4px;padding:3px 5px;font-size:13px;background:#fafbfc}
+.adm .band input{width:70px;padding:4px 6px;font-size:14px}
+.adm .x{border:0;background:none;color:var(--flood);font-size:18px;cursor:pointer;line-height:1;padding:0 2px}
+.adm .svc{border:1px solid var(--rule);border-radius:6px;padding:12px;margin:10px 0}
+.adm pre{white-space:pre-wrap;font:13px/1.45 'IBM Plex Mono',ui-monospace,monospace;background:#f6f8fa;border:1px solid var(--rule);border-radius:6px;padding:12px;max-height:520px;overflow:auto}
+.adm .sticky{position:sticky;bottom:0;background:var(--sheet,#fff);border-top:1px solid var(--rule);padding:10px 0;margin-top:14px;z-index:2}
+.adm .gate{max-width:420px;margin:40px auto}
+.adm .gate input{width:100%;margin-bottom:10px}
+.adm .total{font:700 24px var(--f-display);color:var(--navy)}
+@media (max-width:640px){.adm th.hide,.adm td.hide{display:none}.adm input[type=number]{width:90px}}
+</style></head><body>
+<header class="top"><div class="wrap"><a class="brand" href="./" aria-label="Adventuity Floodline home"><div><b>Adventuity</b><span>Floodline</span></div></a>
+<nav class="nav" aria-label="Main"><a href="studio.html">Studio</a><a href="./">Public website</a></nav></div></header>
+<main class="adm" id="adm"><span class="label">Administrator</span><h1>Pricing and quotations</h1><p class="muted" id="adm-load">Loading…</p></main>
+<script src="config.js?v=20261103180000"></script><script src="js/pricing.js?v=20261103180000"></script></body></html>
