@@ -3,7 +3,9 @@
 //      { action: 'create_account', role: 'tutor' | 'learner', email, password, full_name, phone,
 //        tutor: meet_link, tutor_rate, tutor_subjects · learner: school, grade, approved, guardian_phone }   → a login with a temporary password
 // Tutors may only create learner accounts (assigned to themselves for the subjects they choose) and give a new temporary
-// password to a learner they added who has not signed in and chosen their own password yet. Everything else is the director's.
+// password to a learner they added who has not signed in and chosen their own password yet. A tutor setting up the login of a
+// learner the director allocated to them passes allocation_id: the learner gets that allocation's subject, hours and sponsor
+// (an existing login with that e-mail is linked instead). Everything else is the director's.
 // verify_jwt is off because the project uses publishable keys; the caller is checked below.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,9 +36,25 @@ Deno.serve(async (req) => {
   if (b.action === 'create_account') {
     const role = isTutor ? 'learner' : b.role === 'tutor' ? 'tutor' : 'learner';
     const SUBJECTS = ['maths', 'phys', 'chem', 'life'];
+    // a learner the director allocated to this tutor (from the allocation sheet)
+    let alloc: Record<string, unknown> | null = null;
+    if (isTutor && b.allocation_id) {
+      if (!UUID.test(String(b.allocation_id))) return json({ error: 'Invalid request' }, 400);
+      const al = await (await fetch(URL_ + '/rest/v1/allocations?select=*&status=eq.assigned&learner_id=is.null&id=eq.' + b.allocation_id + '&tutor_id=eq.' + user.id, { headers: H })).json();
+      if (!Array.isArray(al) || !al[0]) return json({ error: 'This learner is not waiting for a login from you – ask the director' }, 403);
+      alloc = al[0];
+    }
     const mySubjects = isTutor ? String(prof[0].tutor_subjects || '').split(',').filter((x) => SUBJECTS.includes(x)) : SUBJECTS;
-    if (isTutor && !mySubjects.length) return json({ error: 'The director has not set your subjects yet – ask them to' }, 403);
-    const subjects = isTutor ? (Array.isArray(b.subjects) ? b.subjects : String(b.subjects || '').split(',')).map(String).filter((x) => SUBJECTS.includes(x) && mySubjects.includes(x)) : [];
+    if (isTutor && !alloc && !mySubjects.length) return json({ error: 'The director has not set your subjects yet – ask them to' }, 403);
+    const subjects = alloc ? (alloc.subject === 'phys' ? ['phys', 'chem'] : [String(alloc.subject)])
+      : isTutor ? (Array.isArray(b.subjects) ? b.subjects : String(b.subjects || '').split(',')).map(String).filter((x) => SUBJECTS.includes(x) && mySubjects.includes(x)) : [];
+    const assignRows = (lid: string) => subjects.map((subject) => (alloc ? { learner_id: lid, tutor_id: user.id, subject, active: true, hours: subject === 'chem' ? 0 : Number(alloc!.hours) || 0, share_contacts: true, allocation_id: alloc!.id, note: String(alloc!.note || '').slice(0, 500) } : { learner_id: lid, tutor_id: user.id, subject, active: true }));
+    let linked = false;
+    const linkAlloc = async (lid: string) => {
+      if (!alloc) return;
+      const r = await fetch(URL_ + '/rest/v1/allocations?id=eq.' + alloc!.id + '&tutor_id=eq.' + user.id, { method: 'PATCH', headers: H, body: JSON.stringify({ learner_id: lid, status: 'active' }) });
+      if (r.ok) linked = true;
+    };
     if (isTutor && !subjects.length) return json({ error: 'Choose the subject(s) you will teach this learner' }, 400);
     const addedToday = async () => {   // a tutor adds at most 15 learners a day
       const r = await fetch(URL_ + '/rest/v1/profiles?select=id&created_by=eq.' + user.id + '&created_at=gte.' + new Date(Date.now() - 864e5).toISOString(), { headers: H });
@@ -61,9 +79,26 @@ Deno.serve(async (req) => {
       if (!Array.isArray(cfg) || (cfg[0] && String(cfg[0].value).trim().toLowerCase() === email)) return json({ error: 'That e-mail already has an account – ask the director to assign this learner to you.' }, 409);
     }
     if (meet_link && !/^https:\/\/\S{6,}$/.test(meet_link)) return json({ error: 'The meeting link must start with https://' }, 400);
+    // claim the allocation before anything is created, so two requests at once cannot both use it
+    if (alloc) {
+      const c = await fetch(URL_ + '/rest/v1/allocations?id=eq.' + alloc.id + '&tutor_id=eq.' + user.id + '&status=eq.assigned&learner_id=is.null', { method: 'PATCH', headers: SH({ 'Content-Type': 'application/json', Prefer: 'return=representation' }), body: JSON.stringify({ status: 'active' }) });
+      const cr = c.ok ? await c.json() : [];
+      if (!Array.isArray(cr) || !cr[0]) return json({ error: 'This learner is not waiting for a login from you – ask the director' }, 409);
+    }
+    try {
     const r = await fetch(URL_ + '/auth/v1/admin/users', { method: 'POST', headers: H, body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name, phone, school, ...(grade ? { grade: String(grade) } : {}) } }) });
     if (!r.ok) {
       const t = await r.text();
+      // the allocated learner already has a login: link it – only for the e-mail the director's sheet gave for this learner
+      if (alloc && String(alloc.email || '').trim().toLowerCase() === email && (r.status === 422 || /already|exists|registered/i.test(t))) {
+        const ex = await (await fetch(URL_ + '/rest/v1/profiles?select=id,role&email=eq.' + encodeURIComponent(email), { headers: H })).json();
+        if (!Array.isArray(ex) || !ex[0] || ex[0].role !== 'learner') return json({ error: 'That e-mail belongs to another kind of account – ask the director' }, 409);
+        const a = await fetch(URL_ + '/rest/v1/assignments?on_conflict=learner_id,tutor_id,subject', { method: 'POST', headers: SH({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }), body: JSON.stringify(assignRows(ex[0].id)) });
+        if (!a.ok) return json({ error: 'Could not link the learner – ask the director' }, 500);
+        if (alloc.sponsor_id) await fetch(URL_ + '/rest/v1/profiles?sponsor_id=is.null&id=eq.' + ex[0].id, { method: 'PATCH', headers: H, body: JSON.stringify({ sponsor_id: alloc.sponsor_id }) });
+        await linkAlloc(ex[0].id);
+        return json({ ok: true, user_id: ex[0].id, subjects, existing: true });
+      }
       if (r.status === 422 || /already|exists|registered/i.test(t)) return json({ error: isTutor ? 'That e-mail already has an account – ask the director to assign this learner to you.' : role === 'tutor' ? 'That e-mail already has an account. Use another e-mail, or make that account a tutor from the Learners page.' : 'That e-mail already has an account – find the learner under Learners.' }, 409);
       console.error('create user failed', r.status, t);
       return json({ error: 'Could not create the account' }, 500);
@@ -72,7 +107,7 @@ Deno.serve(async (req) => {
     if (!UUID.test(String(id || ''))) return json({ error: 'Account created, but its id was not returned – refresh the page' }, 500);
     // the sign-up trigger made a learner profile: set it up (the service key may change role and approval)
     const patch = role === 'tutor' ? { role, approved: true, must_change_password: true, full_name, phone, meet_link, tutor_rate, tutor_subjects }
-      : isTutor ? { role: 'learner', approved: true, must_change_password: true, full_name, phone, guardian_phone, school, grade, created_by: user.id }
+      : isTutor ? { role: 'learner', approved: true, must_change_password: true, full_name, phone, guardian_phone, school, grade, created_by: user.id, ...(alloc && alloc.sponsor_id ? { sponsor_id: alloc.sponsor_id } : {}) }
       : { role: 'learner', approved: b.approved !== false, must_change_password: true, full_name, phone, guardian_phone, school, grade };
     const p = await fetch(URL_ + '/rest/v1/profiles?id=eq.' + id, { method: 'PATCH', headers: SH({ 'Content-Type': 'application/json', Prefer: 'return=representation' }), body: JSON.stringify(patch) });
     const rows = p.ok ? await p.json() : [];
@@ -81,11 +116,16 @@ Deno.serve(async (req) => {
     if (rows[0].role !== role) { await undo(); return json({ error: 'Could not create that account' }, 409); }
     if (isTutor && (await addedToday()) > 15) { await undo(); return json({ error: 'You have added 15 learners today – ask the director to add more' }, 429); }
     if (isTutor) {   // the learner is assigned to the tutor who added them; the director sets the hours
-      const a = await fetch(URL_ + '/rest/v1/assignments?on_conflict=learner_id,tutor_id,subject', { method: 'POST', headers: SH({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }), body: JSON.stringify(subjects.map((subject) => ({ learner_id: id, tutor_id: user.id, subject, active: true }))) });
+      const a = await fetch(URL_ + '/rest/v1/assignments?on_conflict=learner_id,tutor_id,subject', { method: 'POST', headers: SH({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }), body: JSON.stringify(assignRows(id)) });
       if (!a.ok) { console.error('assign failed', a.status, await a.text()); return json({ error: 'Account created, but it could not be assigned to you – ask the director to assign the learner' }, 500); }
+      await linkAlloc(id);
       return json({ ok: true, user_id: id, subjects });
     }
     return json({ ok: true, user_id: id, profile: rows[0] });
+    } finally {
+      // something failed before the learner was linked: they wait for a login again
+      if (alloc && !linked) await fetch(URL_ + '/rest/v1/allocations?id=eq.' + alloc.id + '&status=eq.active&learner_id=is.null', { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'assigned' }) }).catch(() => null);
+    }
   }
 
   if (!UUID.test(String(b.user_id || ''))) return json({ error: 'Choose an account' }, 400);

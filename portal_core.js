@@ -42,6 +42,7 @@
 
   /* ---------------------------------------------------------------- dates & money */
   const now = ADV.now = () => new Date();
+  ADV.STD_RATE = 150;   // standard tutor pay per hour (R); a different rate is set per tutor
   const F = (o) => new Intl.DateTimeFormat('en-ZA', Object.assign({ timeZone: TZ }, o));
   const fmt = ADV.fmt = {
     date: (d) => F({ weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(d)),
@@ -95,7 +96,7 @@
   /* ---------------------------------------------------------------- tabs */
   const LEARNER_TABS = [['home', 'Home', 'home'], ['book', 'Book', 'plus'], ['lessons', 'My lessons', 'cal'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['progress', 'Progress', 'chart'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
   const ADMIN_TABS = [['dash', 'Dashboard', 'home'], ['bookings', 'Bookings', 'cal'], ['messages', 'Messages', 'chat'], ['learners', 'Learners', 'users'], ['tutors', 'Tutors', 'note'], ['classes', 'Classes', 'video'], ['money', 'Money', 'money'], ['analysis', 'Analysis', 'chart'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['board', 'Board', 'pen'], ['settings', 'Settings', 'gear'], ['account', 'Account', 'user']];
-  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tsched', 'Schedule', 'plus'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
+  const TUTOR_TABS = [['tdash', 'Today', 'home'], ['tsched', 'Schedule', 'plus'], ['tlessons', 'My lessons', 'cal'], ['tlearners', 'My learners', 'users'], ['tpay', 'My pay', 'money'], ['board', 'Board', 'pen'], ['maths', 'Maths', 'maths'], ['sci', 'Physical Sci', 'sci'], ['life', 'Life Sci', 'life'], ['papers', 'Papers', 'papers'], ['messages', 'Messages', 'chat'], ['account', 'Account', 'user']];
   const tabs = () => (state.isAdmin ? ADMIN_TABS : state.isTutor ? TUTOR_TABS : LEARNER_TABS);
   const MOBILE = () => (state.isAdmin ? ['dash', 'bookings', 'messages', 'maths'] : state.isTutor ? ['tdash', 'tsched', 'tlessons', 'board'] : ['home', 'book', 'lessons', 'maths']);
   ADV.go = function (tab, topic, opts) {
