@@ -60,9 +60,10 @@ begin new.updated_at := now(); return new; end $$;
 drop trigger if exists floodline_clients_touch on public.floodline_clients;
 create trigger floodline_clients_touch before update on public.floodline_clients for each row execute function public.floodline_touch_updated();
 
--- A test request (example.com, "test" in the e-mail or name) gets status "test" so it stays out of the analysis.
+-- Only an address at a reserved test domain (example.com, .test, .invalid, localhost), which no real person can receive
+-- mail at, is marked "test". Nothing else is ever guessed: the administrator marks other test records by hand.
 create or replace function public.floodline_looks_test(p_email text, p_name text) returns boolean language sql immutable as $$
-  select coalesce(p_email, '') ~* '(@example\.|test|^x+@|@x+\.)' or coalesce(p_name, '') ~* '\mtest\M'
+  select coalesce(p_email, '') ~* '@(.+\.)?(example\.(com|net|org)|example|test|invalid|localhost)$'
 $$;
 
 -- Find or create the client of a quote request. Never blocks the request: any error leaves client_id empty.
