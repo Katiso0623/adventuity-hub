@@ -159,14 +159,20 @@
   function panePayments() {
     const p = document.getElementById('pane');
     if (!data.invoices.length) { p.innerHTML = '<p class="muted card">No invoices yet.</p>'; return; }
-    p.innerHTML = `<p class="muted">When a client says they paid by EFT, check the Capitec Business account for the amount and the invoice number as reference, then mark it paid: the client gets a receipt by e-mail and the request is marked won.</p><p class="msg" id="pm-msg"></p>
+    p.innerHTML = `<p class="muted">Clients pay by EFT into the Capitec Business account with the invoice number as reference, and can upload a proof of payment on their payment page. A proof is not the money: check that the amount has reflected, then mark it paid. The client gets a receipt by e-mail and the request is marked won.</p><p class="msg" id="pm-msg"></p>
       <div class="scroll"><table><thead><tr><th>Invoice</th><th>Client</th><th class="hide">For</th><th class="r">Amount</th><th>Status</th><th></th></tr></thead><tbody>${data.invoices.map(i => {
         const st = i.status === 'paid' ? `<span class="tag paid">Paid${i.method ? ' · ' + (i.method === 'eft' ? 'EFT' : 'card') : ''}</span><div class="adm-sub">${when(i.paid_at)}</div>`
           : i.status === 'cancelled' ? '<span class="tag">Cancelled</span>'
           : i.eft_at ? `<span class="tag eft">Client says paid by EFT</span><div class="adm-sub">${when(i.eft_at)}${i.eft_note ? ' · ' + esc(i.eft_note) : ''}</div>` : '<span class="tag unpaid">Unpaid</span>';
         return `<tr><td><b>${esc(i.ref)}</b><div class="adm-sub">${when(i.created_at)}</div></td><td>${esc(i.client_name || '-')}<div class="adm-sub">${esc(i.client_email || '')}</div></td><td class="hide">${esc(i.description)}</td><td class="r">${R(i.amount_cents / 100)}</td><td>${st}</td>
-          <td class="act"><a class="b sm" href="${esc(i.link)}" target="_blank" rel="noopener">Open</a> <a class="b sm" href="${esc(i.link)}&amp;pdf=1" target="_blank" rel="noopener" title="Download the invoice as a PDF">PDF</a>${i.status === 'unpaid' ? ` <button class="b sm ok" type="button" data-paid="${i.id}">Mark paid (EFT)</button>` : ''}</td></tr>`;
+          <td class="act"><a class="b sm" href="${esc(i.link)}" target="_blank" rel="noopener">Open</a> <a class="b sm" href="${esc(i.link)}&amp;pdf=1" target="_blank" rel="noopener" title="Download the invoice as a PDF">PDF</a>${i.eft_at ? ` <button class="b sm" type="button" data-proof="${i.id}" title="The proof of payment the client uploaded, if any">Proof</button>` : ''}${i.status === 'unpaid' ? ` <button class="b sm ok" type="button" data-paid="${i.id}">Mark paid (EFT)</button>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div>`;
+    p.querySelectorAll('[data-proof]').forEach(b => b.addEventListener('click', async () => {
+      const w = window.open('', '_blank'); b.disabled = true;
+      try { const r = await api(PAY, { action: 'proof', id: b.dataset.proof }); if (w) w.location.href = r.url; else location.href = r.url; }
+      catch (e) { if (w) w.close(); say('pm-msg', e.message, 'err'); }
+      b.disabled = false;
+    }));
     p.querySelectorAll('[data-paid]').forEach(b => b.addEventListener('click', async () => {
       const i = data.invoices.find(x => x.id === b.dataset.paid);
       if (!confirm(`Has ${R(i.amount_cents / 100)} for ${i.ref} reflected in the bank account? The client receives a payment confirmation by e-mail.`)) return;

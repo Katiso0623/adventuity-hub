@@ -2,7 +2,8 @@
 //  - Studio / pricing page (signed-in administrator): create a payment request, mark an EFT payment as received,
 //    check the Yoco connection, register the webhook.
 //  - Pay page (client): view the invoice (with the quotation and the bank details), tell us about an EFT payment,
-//    start a Yoco checkout, confirm the payment on return. These public actions are authorised by the invoice
+//    attach a proof of payment (PDF or photo, kept in the private floodline-pop bucket), start a Yoco checkout,
+//    confirm the payment on return. These public actions are authorised by the invoice
 //    reference plus its secret token (in the payment link).
 //  - Yoco webhook (payment.succeeded): the payment is always confirmed by reading the checkout back from Yoco
 //    with the secret key, so a forged webhook cannot mark an invoice paid.
@@ -23,12 +24,16 @@ const db = (path: string, init: RequestInit = {}) => fetch(URL_ + '/rest/v1' + p
 const YOCO = 'https://payments.yoco.com/api';
 const KEY = (Deno.env.get('YOCO_SECRET_KEY') || '').trim();
 const FN_URL = URL_ + '/functions/v1/floodline-pay';
+// proofs of payment: private bucket, no public or client access; administrators get a short-lived signed link
+const POP = 'floodline-pop';
+const POP_MAX = 5 * 1024 * 1024;
+const POP_TYPES: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif' };
 const clean = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 const rand = (c: number) => 'R ' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 // payment links may point to the Adventuity websites (and their Azure / GitHub Pages copies) only
 const SITE_OK = /^https:\/\/([a-z0-9-]+\.)*(adventuity\.co\.za|adventuity\.com|azurestaticapps\.net|katiso0623\.github\.io)\//i;
 
-type Inv = { id: string; ref: string; quote_id: string | null; description: string; amount_cents: number; currency: string; client_name: string; client_email: string; token: string; status: string; checkout_id: string | null; paid_at: string | null; paid_cents: number | null; mode: string | null; eft_at: string | null; eft_note: string; method: string | null; created_at: string };
+type Inv = { id: string; ref: string; quote_id: string | null; description: string; amount_cents: number; currency: string; client_name: string; client_email: string; token: string; status: string; checkout_id: string | null; paid_at: string | null; paid_cents: number | null; mode: string | null; eft_at: string | null; eft_note: string; method: string | null; created_at: string; proof_path: string | null; proof_name: string | null; proof_at: string | null };
 type Bank = { bank: string; holder: string; number: string; branch: string; type: string };
 
 async function cfg(): Promise<Record<string, string>> {
@@ -87,7 +92,7 @@ async function getInv(ref: unknown, token: unknown): Promise<Inv | null> {
   return diff === 0 ? inv : null;
 }
 function publicView(inv: Inv) {
-  return { ref: inv.ref, description: inv.description, amount_cents: inv.amount_cents, amount: rand(inv.amount_cents), currency: inv.currency, status: inv.status, client: (inv.client_name || '').split(' ')[0], paid_at: inv.paid_at, eft_at: inv.eft_at, method: inv.method, company: 'Adventuity (Pty) Ltd' };
+  return { ref: inv.ref, description: inv.description, amount_cents: inv.amount_cents, amount: rand(inv.amount_cents), currency: inv.currency, status: inv.status, client: (inv.client_name || '').split(' ')[0], paid_at: inv.paid_at, eft_at: inv.eft_at, method: inv.method, proof: !!inv.proof_path, proof_at: inv.proof_at, company: 'Adventuity (Pty) Ltd' };
 }
 /** The automatic quotation behind an invoice, for the pay page (only what the client already received by e-mail). */
 async function quoteView(inv: Inv) {
@@ -131,10 +136,42 @@ async function mail(subject: string, fields: Record<string, unknown>, clientEmai
     const origin = new URL(site).origin;
     const r = await fetch('https://formsubmit.co/ajax/' + encodeURIComponent(to), {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: origin, Referer: origin + '/' },
+      signal: AbortSignal.timeout(20000),
       body: JSON.stringify({ _subject: subject, _template: 'table', _captcha: 'false', ...(clientEmail ? { email: clientEmail, _replyto: clientEmail, _autoresponse: clientText } : {}), ...fields }),
     });
     return r.ok;
   } catch (e) { console.error('e-mail failed', String(e)); return false; }
+}
+
+/** Store the client's proof of payment (base64 from the pay page) in the private bucket; returns the saved fields or an error text. */
+async function saveProof(inv: Inv, p: unknown): Promise<{ proof_path: string; proof_name: string; proof_at: string } | string> {
+  const o = (p || {}) as Record<string, unknown>;
+  const type = clean(o.type, 60).toLowerCase(), ext = POP_TYPES[type];
+  if (!ext) return 'Please attach a PDF or a photo (JPG or PNG) of the proof of payment.';
+  const b64 = String(o.data || '').replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+  if (!b64 || b64.length > Math.ceil(POP_MAX / 3) * 4 + 8 || !/^[A-Za-z0-9+/]+=*$/.test(b64)) return 'The proof of payment must be a file of 5 MB or less.';
+  let bytes: Uint8Array;
+  try { bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)); } catch (_) { return 'The file could not be read. Please try another file.'; }
+  if (!bytes.length || bytes.length > POP_MAX) return 'The proof of payment must be a file of 5 MB or less.';
+  // the content must match the type the browser claims (PDF, JPEG, PNG, WebP or HEIC/HEIF)
+  const head = Array.from(bytes.slice(0, 12));
+  const is = (sig: number[], at = 0) => sig.every((v, i) => head[at + i] === v);
+  const okMagic = ext === 'pdf' ? is([0x25, 0x50, 0x44, 0x46]) : ext === 'jpg' ? is([0xff, 0xd8, 0xff]) : ext === 'png' ? is([0x89, 0x50, 0x4e, 0x47]) : ext === 'webp' ? is([0x52, 0x49, 0x46, 0x46]) && is([0x57, 0x45, 0x42, 0x50], 8) : is([0x66, 0x74, 0x79, 0x70], 4);
+  if (!okMagic) return 'That file does not look like a PDF or photo. Please attach the proof of payment from your bank.';
+  const name = clean(o.name, 120).replace(/[^\w .()-]+/g, '_') || 'proof.' + ext;
+  const path = inv.id + '/' + Date.now() + '.' + ext;
+  const up = await fetch(URL_ + '/storage/v1/object/' + POP + '/' + path, { method: 'POST', headers: SH({ 'Content-Type': type, 'x-upsert': 'false' }), body: bytes });
+  if (!up.ok) { console.error('proof upload', up.status, await up.text()); return 'Could not save the file. Please try again, or e-mail it to us.'; }
+  if (inv.proof_path) await fetch(URL_ + '/storage/v1/object/' + POP + '/' + inv.proof_path, { method: 'DELETE', headers: SH() }).catch(() => null);
+  return { proof_path: path, proof_name: name, proof_at: new Date().toISOString() };
+}
+/** A link to the proof of payment that works for 10 minutes (administrators only). */
+async function proofLink(inv: Inv): Promise<string | null> {
+  if (!inv.proof_path) return null;
+  const r = await fetch(URL_ + '/storage/v1/object/sign/' + POP + '/' + inv.proof_path, { method: 'POST', headers: SH({ 'Content-Type': 'application/json' }), body: JSON.stringify({ expiresIn: 600 }) });
+  if (!r.ok) { console.error('proof sign', r.status, await r.text()); return null; }
+  const j = await r.json(); const u = String(j.signedURL || j.signedUrl || '');
+  return u ? URL_ + '/storage/v1' + (u.startsWith('/') ? u : '/' + u) : null;
 }
 
 type PaidInfo = { method: 'card' | 'eft'; payment_id?: string; paid_cents?: number; by?: string; event?: unknown };
@@ -208,6 +245,19 @@ Deno.serve(async (req) => {
       inv = await markPaid(inv, { method: f.method === 'card' ? 'card' : 'eft', by: me.id }, await cfg());
       return json({ invoice: publicView(inv) });
     }
+    // ---- administrator opens a client's proof of payment (a link valid for 10 minutes)
+    if (action === 'proof') {
+      const me = await adminUser(req);
+      if (!me) return json({ error: 'Sign in with an Adventuity administrator account to see proofs of payment.' }, 401);
+      let inv: Inv | null = null;
+      if (typeof f.id === 'string' && /^[0-9a-f-]{36}$/.test(f.id)) inv = ((await (await db('/floodline_invoices?select=*&id=eq.' + f.id)).json()) || [])[0] || null;
+      else if (/^INV-[A-Z0-9]{6}$/.test(clean(f.ref, 20))) inv = ((await (await db('/floodline_invoices?select=*&ref=eq.' + clean(f.ref, 20))).json()) || [])[0] || null;
+      if (!inv) return json({ error: 'Invoice not found.' }, 404);
+      if (!inv.proof_path) return json({ error: 'The client has not attached a proof of payment.' }, 404);
+      const url = await proofLink(inv);
+      if (!url) return json({ error: 'Could not open the proof of payment. Please try again.' }, 500);
+      return json({ url, name: inv.proof_name, at: inv.proof_at });
+    }
     // ---- public: the client's payment page
     if (action === 'view' || action === 'start' || action === 'confirm' || action === 'eft') {
       let inv = await getInv(f.ref, f.token);
@@ -222,15 +272,28 @@ Deno.serve(async (req) => {
       if (action === 'confirm') { inv = await confirm(inv, c); return json({ invoice: publicView(inv) }); }
       if (action === 'eft') {
         if (inv.status !== 'unpaid') return json({ invoice: publicView(inv) });
-        const note = clean(f.note, 120);
+        const note = clean(f.note, 120) || inv.eft_note || '';
+        const patch: Record<string, unknown> = { eft_at: inv.eft_at && f.proof && !f.note ? inv.eft_at : new Date().toISOString(), eft_note: note };
+        let gotProof = false;
+        if (f.proof) {
+          const saved = await saveProof(inv, f.proof);
+          if (typeof saved === 'string') return json({ invoice: publicView(inv), error: saved }, 400);
+          Object.assign(patch, saved); gotProof = true;
+        }
         const again = inv.eft_at && Date.now() - new Date(inv.eft_at).getTime() < 10 * 60e3;
-        const up = await db('/floodline_invoices?id=eq.' + inv.id, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ eft_at: new Date().toISOString(), eft_note: note }) });
+        const up = await db('/floodline_invoices?id=eq.' + inv.id, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(patch) });
         const rows = await up.json().catch(() => []); if (Array.isArray(rows) && rows[0]) inv = rows[0];
-        if (!again) {
+        if (!again || gotProof) {
+          // the alerts run after the reply, so the client is not kept waiting when the e-mail relay is slow
+          const tell = (async () => {
           const base = (c.floodline_url || 'https://www.adventuity.co.za/').replace(/\/?$/, '/');
           const link = base + 'pay.html?i=' + inv!.ref + '&t=' + inv!.token;
-          await notifyAdmin('EFT to check ' + rand(inv!.amount_cents), inv!.ref + ' · ' + (inv!.client_name || 'client') + ' says they paid by EFT' + (note ? ' · ' + note : ''), c, base + 'pricing.html#payments');
-          await mail('EFT payment to check ' + inv!.ref + ' - ' + rand(inv!.amount_cents), { Invoice: inv!.ref, Amount: rand(inv!.amount_cents), Description: inv!.description, Client: inv!.client_name || '-', 'Client e-mail': inv!.client_email || '-', 'Client note': note || '-', 'What to do': 'Check the Capitec Business account for this amount with reference ' + inv!.ref + '. When it has reflected, open the link below while signed in and press "Mark as paid", or use the Payments tab on pricing.html.', 'Invoice link': link }, '', '', c);
+          const what = gotProof ? ' sent a proof of payment' : ' says they paid by EFT';
+          await notifyAdmin((gotProof ? 'Proof of payment ' : 'EFT to check ') + rand(inv!.amount_cents), inv!.ref + ' · ' + (inv!.client_name || 'client') + what + (note ? ' · ' + note : ''), c, base + 'pricing.html#payments');
+          await mail((gotProof ? 'Proof of payment ' : 'EFT payment to check ') + inv!.ref + ' - ' + rand(inv!.amount_cents), { Invoice: inv!.ref, Amount: rand(inv!.amount_cents), Description: inv!.description, Client: inv!.client_name || '-', 'Client e-mail': inv!.client_email || '-', 'Client note': note || '-', 'Proof of payment': gotProof ? 'Attached on the website (open the invoice link while signed in, or the Payments tab on pricing.html)' : 'Not attached', 'What to do': 'Check the Capitec Business account for this amount with reference ' + inv!.ref + '. A proof of payment is not proof that the money has arrived: wait until it has reflected, then open the link below while signed in and press "Mark as paid", or use the Payments tab on pricing.html.', 'Invoice link': link }, '', '', c);
+          })().catch((e) => console.error('eft alerts', String(e)));
+          const rt = (globalThis as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }).EdgeRuntime;
+          if (rt) rt.waitUntil(tell); else await tell;
         }
         return json({ invoice: publicView(inv!) });
       }
@@ -252,8 +315,9 @@ Deno.serve(async (req) => {
     if (!me) return json({ error: 'Sign in with an administrator account.' }, 401);
     const c = await cfg();
     if (action === 'status') {
+      const bank = await bankDetails();
       const wh = await (await db('/floodline_private_assets?select=updated_at&name=eq.yoco-webhook')).json();
-      return json({ configured: !!KEY, mode: !KEY ? null : KEY.startsWith('sk_live_') ? 'live' : 'test', webhook: Array.isArray(wh) && wh.length ? wh[0].updated_at : null, eft: !!(await bankDetails()) });
+      return json({ configured: !!KEY, mode: !KEY ? null : KEY.startsWith('sk_live_') ? 'live' : 'test', webhook: Array.isArray(wh) && wh.length ? wh[0].updated_at : null, eft: !!bank, bank: bank ? { bank: bank.bank, holder: bank.holder, number: bank.number, branch: bank.branch } : null });
     }
     if (action === 'connect') {
       if (!KEY) return json({ error: 'Add the Yoco secret key first (Supabase secret YOCO_SECRET_KEY).' }, 400);
