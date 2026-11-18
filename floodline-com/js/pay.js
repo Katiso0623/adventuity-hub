@@ -69,6 +69,14 @@
       catch (_) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); c.textContent = 'Copied'; } catch (e) { c.textContent = 'Select and copy the details above'; } ta.remove(); }
       setTimeout(() => { c.textContent = 'Copy bank details'; }, 2500);
     });
+    const d = $('#q-pdf'); if (d) d.addEventListener('click', async () => {
+      const err = $('#q-pdf-err'); err.hidden = true; d.disabled = true; d.textContent = 'Preparing the PDF…';
+      try {
+        if (!window.FLQuotePdf) throw new Error('The PDF tool did not load. Please refresh the page and try again.');
+        await window.FLQuotePdf.download(Object.assign({}, quote, { client: { name: inv.client || '' }, invoice: inv.ref, link: location.href.split('&r=')[0], bank: bank || null, contact: { phone: CT.phone || '', email: CT.email || '' } }));
+      } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+      d.disabled = false; d.textContent = 'Download quotation (PDF)';
+    });
     const f = $('#eft-form'); if (f) f.addEventListener('submit', async e => {
       e.preventDefault(); const go = $('#eft-go'), err = $('#eft-err'); go.disabled = true; go.textContent = 'Sending…'; err.hidden = true;
       try { const j = await call('eft', { note: $('#eft-note').value.trim().slice(0, 120) }); if (j.invoice) { inv = j.invoice; if (inv.status === 'paid') { paidView(inv); return; } $('#eft-notice').innerHTML = eftNotice(Object.assign({}, inv, { eft_at: inv.eft_at || new Date().toISOString() })); } else throw new Error(j.error || 'Could not send the notice.'); }
@@ -91,6 +99,7 @@
     return `<section class="pay-quote" aria-labelledby="q-h"><h2 id="q-h">Quotation ${esc(quote.ref)}</h2>
       <table><tbody>${rows}</tbody><tfoot><tr><th>Total (no VAT: not VAT registered)</th><th>${R(quote.total)}</th></tr>${opt}</tfoot></table>
       <p class="pay-fine">${pay}.</p><p class="pay-fine">Turnaround: ${esc(quote.turnaround || '')}.${quote.valid_until ? ' Valid until ' + esc(fmtDate(quote.valid_until)) + '.' : ''}</p>
+      <p class="pay-actions"><button class="btn" type="button" id="q-pdf">Download quotation (PDF)</button></p><p class="note err" id="q-pdf-err" role="alert" hidden></p>
       <details><summary>Assumptions and exclusions</summary>${list('Based on the details you gave us', quote.assumptions)}${list('Not included', quote.exclusions)}<p class="pay-fine">The quotation is based on the details you supplied; if the site or scope is materially different, we confirm a revised price before any work starts.</p></details></section>`;
   }
   function unpaidView(inv, online, note) {

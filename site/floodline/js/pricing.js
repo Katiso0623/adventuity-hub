@@ -103,7 +103,7 @@
           <td>${esc(q.full_name)}${q.company ? `<div class="adm-sub">${esc(q.company)}</div>` : ''}<div class="adm-sub">${esc(q.email)} · ${esc(q.phone)}</div></td>
           <td class="hide">${esc(q.purpose)}<div class="adm-sub">${q.size_ha != null ? esc(q.size_ha) + ' ha · ' : ''}${esc(q.survey || 'survey: not sure')}${q.deadline ? ' · needed by ' + esc(q.deadline) : ''}</div><div class="adm-sub">${esc(q.site_description || q.address || '')}</div></td>
           <td><span class="tag ${s.tag}">${s.label}</span><div class="adm-sub">${s.text}</div></td>
-          <td class="act"><button class="b sm" type="button" data-prev="${q.id}">Preview</button>${canSend ? ` <button class="b sm red" type="button" data-send="${q.id}">Send matrix price</button>` : ''}${q.auto_status === 'manual' ? ` <button class="b sm" type="button" data-dis="${q.id}" title="You quoted this one yourself">Done by hand</button>` : ''}</td></tr>
+          <td class="act"><button class="b sm" type="button" data-prev="${q.id}">Preview</button> <button class="b sm" type="button" data-pdf="${q.id}" title="${q.auto_status === 'sent' ? 'The quotation that was sent, as a PDF' : 'The matrix price as a draft PDF quotation'}">Download PDF</button>${canSend ? ` <button class="b sm red" type="button" data-send="${q.id}">Send matrix price</button>` : ''}${q.auto_status === 'manual' ? ` <button class="b sm" type="button" data-dis="${q.id}" title="You quoted this one yourself">Done by hand</button>` : ''}</td></tr>
           ${preview[q.id] ? `<tr><td colspan="5">${preview[q.id]}</td></tr>` : ''}`;
       }).join('')}</tbody></table></div>`;
     p.querySelectorAll('[data-prev]').forEach(b => b.addEventListener('click', async () => {
@@ -111,6 +111,11 @@
       b.disabled = true;
       try { const j = await api(AQ, { action: 'preview', quote_id: id }); preview[id] = resultHtml(j.result, j.text); paneRequests(); }
       catch (e) { b.disabled = false; say('rq-msg', e.message, 'err'); }
+    }));
+    p.querySelectorAll('[data-pdf]').forEach(b => b.addEventListener('click', async () => {
+      const q = data.quotes.find(x => x.id === b.dataset.pdf); b.disabled = true; const t = b.textContent; b.textContent = 'Preparing…';
+      try { await downloadPdf(q); } catch (e) { say('rq-msg', e.message, 'err'); }
+      b.disabled = false; b.textContent = t;
     }));
     p.querySelectorAll('[data-send]').forEach(b => b.addEventListener('click', async () => {
       const id = b.dataset.send, q = data.quotes.find(x => x.id === id);
@@ -124,6 +129,21 @@
       delete preview[id]; await reload(); say('rq-msg', 'Quotation sent to ' + q.email + '.', 'good');
     }));
     p.querySelectorAll('[data-dis]').forEach(b => b.addEventListener('click', async () => { b.disabled = true; try { await api(AQ, { action: 'dismiss', quote_id: b.dataset.dis }); await reload(); } catch (e) { say('rq-msg', e.message, 'err'); b.disabled = false; } }));
+  }
+  /** The quotation as a PDF: the one that was sent, or (not sent yet) the matrix price as a draft. */
+  async function downloadPdf(q) {
+    if (!window.FLQuotePdf) throw new Error('The PDF tool did not load. Refresh the page and try again.');
+    let r = q.auto_quote || {}, sent = q.auto_status === 'sent' && Array.isArray(r.lines) && r.lines.length;
+    if (!sent) { const j = await api(AQ, { action: 'preview', quote_id: q.id }); r = j.result || {}; }
+    if (!r.service || !Array.isArray(r.lines) || !r.lines.length) throw new Error(`The matrix cannot price ${q.ref}${r.reasons && r.reasons.length ? ' (' + r.reasons[0] + ')' : ''}, so there is no quotation to download.`);
+    const inv = sent && r.invoice_ref ? data.invoices.find(i => i.ref === r.invoice_ref) : null;
+    const CT = CFG.contact || {};
+    await window.FLQuotePdf.download(Object.assign({}, r, {
+      ref: q.ref, date: sent ? q.quoted_at : new Date().toISOString(), service: r.service.name, draft: !sent,
+      client: { name: q.full_name, company: q.company, email: q.email, phone: q.phone }, site: q.site_description || q.address || '', purpose: q.purpose,
+      invoice: sent ? r.invoice_ref : '', link: inv ? inv.link : '',
+      contact: { phone: (M.contact || {}).phone || CT.phone || '', email: CT.email || '' },
+    }));
   }
   function resultHtml(r, text) {
     if (!r) return '';
@@ -145,7 +165,7 @@
           : i.status === 'cancelled' ? '<span class="tag">Cancelled</span>'
           : i.eft_at ? `<span class="tag eft">Client says paid by EFT</span><div class="adm-sub">${when(i.eft_at)}${i.eft_note ? ' · ' + esc(i.eft_note) : ''}</div>` : '<span class="tag unpaid">Unpaid</span>';
         return `<tr><td><b>${esc(i.ref)}</b><div class="adm-sub">${when(i.created_at)}</div></td><td>${esc(i.client_name || '-')}<div class="adm-sub">${esc(i.client_email || '')}</div></td><td class="hide">${esc(i.description)}</td><td class="r">${R(i.amount_cents / 100)}</td><td>${st}</td>
-          <td class="act"><a class="b sm" href="${esc(i.link)}" target="_blank" rel="noopener">Open</a>${i.status === 'unpaid' ? ` <button class="b sm ok" type="button" data-paid="${i.id}">Mark paid (EFT)</button>` : ''}</td></tr>`;
+          <td class="act"><a class="b sm" href="${esc(i.link)}" target="_blank" rel="noopener">Open</a> <a class="b sm" href="${esc(i.link)}&amp;pdf=1" target="_blank" rel="noopener" title="Download the invoice as a PDF">PDF</a>${i.status === 'unpaid' ? ` <button class="b sm ok" type="button" data-paid="${i.id}">Mark paid (EFT)</button>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div>`;
     p.querySelectorAll('[data-paid]').forEach(b => b.addEventListener('click', async () => {
       const i = data.invoices.find(x => x.id === b.dataset.paid);
