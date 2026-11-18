@@ -35,21 +35,38 @@
     if (CT.email) parts.push(`e-mail <a href="mailto:${esc(CT.email)}">${esc(CT.email)}</a>`);
     if (CT.whatsapp) parts.push(`WhatsApp <a href="https://wa.me/${esc(CT.whatsapp)}" target="_blank" rel="noopener">${esc(CT.phone || CT.whatsapp)}</a>`);
     else if (CT.phone) parts.push(`phone ${esc(CT.phone)}`);
-    return parts.length ? 'Proof of payment: ' + parts.join(' or ') + '.' : '';
+    return parts.length ? 'Questions about paying, or cannot upload the proof here? ' + parts.join(' or ') + '.' : '';
+  }
+  const POP_MAX = 5 * 1024 * 1024, POP_OK = /^(application\/pdf|image\/(jpeg|png|webp|heic|heif))$/;
+  function proofInput(id) {
+    return `<label for="${id}">Proof of payment (PDF or photo, up to 5 MB)</label><input class="pay-file" id="${id}" type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.pdf,.jpg,.jpeg,.png,.heic">`;
   }
   function eftNotice(inv) {
-    if (inv.eft_at) return `<div class="pay-ok soft"><b>Thank you — we have your EFT notice${inv.eft_at ? ' of ' + esc(fmtDate(inv.eft_at)) : ''}.</b><span>We confirm EFT payments as soon as they reflect, usually the same working day, and e-mail you a receipt.</span></div>`;
-    return `<form class="pay-eft-form" id="eft-form" novalidate><label for="eft-note">Paid by EFT? Tell us and we will confirm it as soon as it reflects.</label>
-      <div class="pay-eft-row"><input id="eft-note" type="text" maxlength="120" placeholder="Optional: your bank's reference or the account name you paid from"><button class="btn" type="submit" id="eft-go">I have paid by EFT</button></div>
+    if (inv.eft_at && inv.proof) return `<div class="pay-ok soft"><b>Thank you — we have your proof of payment${inv.proof_at ? ' of ' + esc(fmtDate(inv.proof_at)) : ''}.</b><span>We confirm EFT payments as soon as the money reflects in our account (usually the same working day; a few days if you paid from another bank without immediate payment) and e-mail you a receipt.</span></div>`;
+    if (inv.eft_at) return `<div class="pay-ok soft"><b>Thank you — we have your EFT notice${inv.eft_at ? ' of ' + esc(fmtDate(inv.eft_at)) : ''}.</b><span>We confirm EFT payments as soon as they reflect and e-mail you a receipt. Attaching your proof of payment helps us match it faster.</span></div>
+      <form class="pay-eft-form" id="eft-form" novalidate>${proofInput('eft-file')}<div class="pay-eft-row"><button class="btn" type="submit" id="eft-go" data-label="Send proof of payment">Send proof of payment</button></div><p class="note err" id="eft-err" role="alert" hidden></p></form>`;
+    return `<form class="pay-eft-form" id="eft-form" novalidate><h3 class="pay-step">After you have paid</h3>${proofInput('eft-file')}
+      <label for="eft-note">Note (optional)</label><div class="pay-eft-row"><input id="eft-note" type="text" maxlength="120" placeholder="e.g. the account name you paid from"></div>
+      <div class="pay-eft-row"><button class="btn red" type="submit" id="eft-go" data-label="I have paid by EFT">I have paid by EFT</button></div>
+      <p class="pay-fine">No proof to hand? Press the button anyway; you can add the proof later on this page.</p>
       <p class="note err" id="eft-err" role="alert" hidden></p></form>`;
+  }
+  function readProof(input) {
+    const file = input && input.files && input.files[0];
+    if (!file) return Promise.resolve(null);
+    const type = (file.type || '').toLowerCase() || (/\.pdf$/i.test(file.name) ? 'application/pdf' : /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : /\.png$/i.test(file.name) ? 'image/png' : /\.hei[cf]$/i.test(file.name) ? 'image/heic' : '');
+    if (!POP_OK.test(type)) return Promise.reject(new Error('Please attach a PDF or a photo (JPG or PNG) of the proof of payment.'));
+    if (file.size > POP_MAX) return Promise.reject(new Error('That file is larger than 5 MB. Please attach a smaller PDF or photo, or e-mail it to us.'));
+    return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res({ name: file.name, type, data: String(fr.result) }); fr.onerror = () => rej(new Error('The file could not be read. Please try another file.')); fr.readAsDataURL(file); });
   }
   function eftBox(inv, online) {
     if (!bank) return '';
     const rows = [['Bank', bank.bank], ['Account holder', bank.holder], ['Account number', bank.number], ['Branch code', bank.branch], ['Account type', bank.type]].filter(r => r[1]);
     const copyText = rows.map(r => r[0] + ': ' + r[1]).join('\n') + '\nReference: ' + inv.ref + '\nAmount: ' + inv.amount;
-    return `<section class="pay-eft" aria-labelledby="eft-h"><h2 id="eft-h">${online ? 'Or pay by bank transfer (EFT)' : 'Pay by bank transfer (EFT)'}</h2>
+    return `<section class="pay-eft${online ? '' : ' main'}" aria-labelledby="eft-h"><h2 id="eft-h">${online ? 'Or pay by bank transfer (EFT)' : 'Pay by bank transfer (EFT)'}</h2>
+      ${online ? '' : '<p class="pay-fine">Pay from any South African bank by EFT or at a Capitec branch. Use the invoice number as the reference.</p>'}
       <dl class="pay-bank">${rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}<dt>Reference</dt><dd class="ref">${esc(inv.ref)}</dd><dt>Amount</dt><dd>${esc(inv.amount)}</dd></dl>
-      <p class="pay-fine">Please use <b>${esc(inv.ref)}</b> as your payment reference so that we can match your payment.</p>
+      <p class="pay-fine">Please use <b>${esc(inv.ref)}</b> as your payment reference so that we can match your payment. Capitec to Capitec and immediate payments reflect within minutes; other banks usually take 1 to 2 working days.</p>
       <p class="pay-actions"><button class="btn" type="button" id="eft-copy" data-copy="${esc(copyText)}">Copy bank details</button></p>
       <div id="eft-notice">${eftNotice(inv)}</div>
       <p class="pay-fine">${contactLine()}</p></section>`;
@@ -57,6 +74,7 @@
   function adminBox(inv) {
     if (!admin) return '';
     return `<section class="pay-admin" aria-label="Administrator"><p><b>Adventuity administrator</b> (${esc(admin.email)})</p>
+      ${inv.proof ? '<p class="pay-actions"><button class="btn" type="button" id="adm-proof">View the proof of payment</button></p>' : (inv.eft_at ? '<p>The client says they paid by EFT (no proof attached).</p>' : '')}
       <p class="pay-actions"><button class="btn red" type="button" id="adm-paid">Mark ${esc(inv.ref)} as paid (EFT received)</button></p>
       <p class="note err" id="adm-err" role="alert" hidden></p></section>`;
   }
@@ -69,10 +87,26 @@
       catch (_) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); c.textContent = 'Copied'; } catch (e) { c.textContent = 'Select and copy the details above'; } ta.remove(); }
       setTimeout(() => { c.textContent = 'Copy bank details'; }, 2500);
     });
-    const f = $('#eft-form'); if (f) f.addEventListener('submit', async e => {
-      e.preventDefault(); const go = $('#eft-go'), err = $('#eft-err'); go.disabled = true; go.textContent = 'Sending…'; err.hidden = true;
-      try { const j = await call('eft', { note: $('#eft-note').value.trim().slice(0, 120) }); if (j.invoice) { inv = j.invoice; if (inv.status === 'paid') { paidView(inv); return; } $('#eft-notice').innerHTML = eftNotice(Object.assign({}, inv, { eft_at: inv.eft_at || new Date().toISOString() })); } else throw new Error(j.error || 'Could not send the notice.'); }
-      catch (ex) { go.disabled = false; go.textContent = 'I have paid by EFT'; err.textContent = ex.message; err.hidden = false; }
+    const wireEft = () => { const f = $('#eft-form'); if (f) f.addEventListener('submit', async e => {
+      e.preventDefault(); const go = $('#eft-go'), err = $('#eft-err'), noteEl = $('#eft-note'), label = go.dataset.label || go.textContent;
+      err.hidden = true;
+      let proof = null;
+      try { proof = await readProof($('#eft-file')); } catch (ex) { err.textContent = ex.message; err.hidden = false; return; }
+      if (!proof && !noteEl) { err.textContent = 'Choose the proof of payment file first.'; err.hidden = false; return; }
+      go.disabled = true; go.textContent = proof ? 'Uploading…' : 'Sending…';
+      try {
+        const j = await call('eft', Object.assign({ note: noteEl ? noteEl.value.trim().slice(0, 120) : '' }, proof ? { proof } : {}));
+        if (j.error && j.invoice && j.invoice.status === 'unpaid') throw new Error(j.error);
+        if (j.invoice) { inv = j.invoice; if (inv.status === 'paid') { paidView(inv); return; } $('#eft-notice').innerHTML = eftNotice(Object.assign({}, inv, { eft_at: inv.eft_at || new Date().toISOString() })); wireEft(); }
+        else throw new Error(j.error || 'Could not send the notice.');
+      } catch (ex) { go.disabled = false; go.textContent = label; err.textContent = ex.message; err.hidden = false; }
+    }); };
+    wireEft();
+    const pv = $('#adm-proof'); if (pv) pv.addEventListener('click', async () => {
+      const w = window.open('', '_blank'); pv.disabled = true;
+      try { const j = await call('proof', {}, admin.token); if (!j.url) throw new Error(j.error || 'Could not open the proof.'); if (w) w.location.href = j.url; else location.href = j.url; }
+      catch (ex) { if (w) w.close(); const er = $('#adm-err'); er.textContent = ex.message; er.hidden = false; }
+      pv.disabled = false;
     });
     const p = $('#adm-paid'); if (p) p.addEventListener('click', async () => {
       if (!confirm('Mark invoice ' + inv.ref + ' (' + inv.amount + ') as paid? The client receives a payment confirmation by e-mail.')) return;
@@ -94,9 +128,9 @@
       <details><summary>Assumptions and exclusions</summary>${list('Based on the details you gave us', quote.assumptions)}${list('Not included', quote.exclusions)}<p class="pay-fine">The quotation is based on the details you supplied; if the site or scope is materially different, we confirm a revised price before any work starts.</p></details></section>`;
   }
   function unpaidView(inv, online, note) {
-    root.innerHTML = card(inv, `${note ? '<p class="note err">' + esc(note) + '</p>' : ''}${pdfButton(inv)}${quoteBox()}
+    root.innerHTML = card(inv, `${note ? '<p class="note err">' + esc(note) + '</p>' : ''}${online ? '' : eftBox(inv, false)}${pdfButton(inv)}${quoteBox()}
       ${online ? `<button class="btn red pay-go" type="button" id="pay-go">Pay ${esc(inv.amount)} by card</button><p class="pay-fine">You pay on the secure Yoco checkout page (Visa, Mastercard, American Express and more; overseas cards welcome). The amount is in South African rand (ZAR); your bank converts it if your card is in another currency. Your card details never reach Adventuity.</p>` : (bank ? '' : '<p class="note">Online card payment is being set up. Please pay by EFT using the banking details on your quotation, or contact us.</p>')}
-      <p class="note err" id="pay-err" role="alert"></p>${eftBox(inv, online)}${adminBox(inv)}`);
+      <p class="note err" id="pay-err" role="alert"></p>${online ? eftBox(inv, true) : ''}${adminBox(inv)}`);
     wire(inv);
   }
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s); }); }
