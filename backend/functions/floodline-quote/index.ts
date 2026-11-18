@@ -21,12 +21,20 @@ const RPS = ['1:20', '1:50', '1:100', '1:200', 'RMF'];
 const JUNK = /@(.+\.)?(example\.(com|net|org)|example|test|invalid|localhost)$/i;
 async function sha(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('').slice(0, 32); }
 const fakeRef = () => 'F-' + crypto.randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase();
+// networks blocked by the administrator (form robots): app_config 'signup_blocked_ips', separated by commas or spaces; '46.62.*' blocks a range
+const isBlocked = (ip: string, list: string) => !!ip && list.split(/[\s,;]+/).filter(Boolean).some((b) => (b.endsWith('*') ? ip.startsWith(b.slice(0, -1)) : ip === b));
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Use the form on the website to request a quote.' }, 405);
   try {
     const f = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const ipNow = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim();
+    let blockedNet = false;
+    try {
+      if (ipNow) { const bl = await (await admin('/rest/v1/app_config?select=value&key=eq.signup_blocked_ips')).json(); blockedNet = isBlocked(ipNow, Array.isArray(bl) && bl[0] ? String(bl[0].value || '') : ''); }
+    } catch (_) { /* list unavailable: never hold up a real request */ }
+    if (blockedNet) return json({ error: 'Requests from this network are blocked.' }, 403);
     if (f.website) return json({ ok: true, ref: fakeRef() }); // honeypot: quietly ignore bots
     const started = Number(f.started_at || 0);
     if (started && Date.now() - started < 4000) return json({ error: 'That was very quick - please check your details and send the form again.' }, 400);

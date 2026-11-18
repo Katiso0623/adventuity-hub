@@ -58,6 +58,19 @@ async function bankDetails(): Promise<Bank | null> {
   return b.number ? b : null;
 }
 const bankLine = (b: Bank | null) => (b ? [b.bank, b.holder, b.type, 'account ' + b.number, b.branch ? 'branch code ' + b.branch : ''].filter(Boolean).join(', ') : '');
+/** What the downloadable invoice prints at the top and bottom: the same invoice settings the learning hub uses. */
+async function sellerInfo() {
+  const rows = await (await db('/private_settings?select=value&key=eq.invoice')).json().catch(() => []);
+  const v = Array.isArray(rows) && rows[0] && rows[0].value ? rows[0].value : {};
+  const addr = String(v.footer || '').split(/\s*·\s*/).map((s: string) => s.trim()).find((s: string) => /^address\s/i.test(s)) || '';
+  return { company: String(v.company || 'Adventuity (Pty) Ltd'), tagline: String(v.tagline || 'Transforming ideas into reality.'), issuer: String(v.issuer || ''), address: addr.replace(/^address\s+/i, '') };
+}
+/** Who the invoice is made out to (the client's own details) and the request it belongs to. */
+async function billingView(inv: Inv) {
+  let q: Record<string, string> | null = null;
+  if (inv.quote_id) { const rows = await (await db('/floodline_quotes?select=ref,company,site_description,address&id=eq.' + inv.quote_id)).json().catch(() => []); q = Array.isArray(rows) ? rows[0] || null : null; }
+  return { date: inv.created_at, name: inv.client_name || '', email: inv.client_email || '', company: (q && q.company) || '', quote_ref: (q && q.ref) || '', site: (q && (q.site_description || q.address)) || '' };
+}
 async function yoco(path: string, init: RequestInit = {}) {
   const r = await fetch(YOCO + path, { ...init, headers: { Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json', ...((init.headers as Record<string, string>) || {}) } });
   const t = await r.text(); let j: Record<string, unknown> = {}; try { j = JSON.parse(t); } catch (_) { /* not json */ }
@@ -203,8 +216,8 @@ Deno.serve(async (req) => {
       const c = await cfg();
       if (action === 'view') {
         try { inv = await confirm(inv, c); } catch (_) { /* status check only */ }
-        const [bank, quote] = await Promise.all([bankDetails(), quoteView(inv)]);
-        return json({ invoice: publicView(inv), online: !!KEY, bank, quote });
+        const [bank, quote, billing, seller] = await Promise.all([bankDetails(), quoteView(inv), billingView(inv).catch(() => null), sellerInfo().catch(() => null)]);
+        return json({ invoice: publicView(inv), online: !!KEY, bank, quote, billing, seller });
       }
       if (action === 'confirm') { inv = await confirm(inv, c); return json({ invoice: publicView(inv) }); }
       if (action === 'eft') {

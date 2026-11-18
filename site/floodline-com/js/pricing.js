@@ -165,7 +165,7 @@
           : i.status === 'cancelled' ? '<span class="tag">Cancelled</span>'
           : i.eft_at ? `<span class="tag eft">Client says paid by EFT</span><div class="adm-sub">${when(i.eft_at)}${i.eft_note ? ' · ' + esc(i.eft_note) : ''}</div>` : '<span class="tag unpaid">Unpaid</span>';
         return `<tr><td><b>${esc(i.ref)}</b><div class="adm-sub">${when(i.created_at)}</div></td><td>${esc(i.client_name || '-')}<div class="adm-sub">${esc(i.client_email || '')}</div></td><td class="hide">${esc(i.description)}</td><td class="r">${R(i.amount_cents / 100)}</td><td>${st}</td>
-          <td class="act"><a class="b sm" href="${esc(i.link)}" target="_blank" rel="noopener">Open</a>${i.status === 'unpaid' ? ` <button class="b sm ok" type="button" data-paid="${i.id}">Mark paid (EFT)</button>` : ''}</td></tr>`;
+          <td class="act"><a class="b sm" href="${esc(i.link)}" target="_blank" rel="noopener">Open</a> <a class="b sm" href="${esc(i.link)}&amp;pdf=1" target="_blank" rel="noopener" title="Download the invoice as a PDF">PDF</a>${i.status === 'unpaid' ? ` <button class="b sm ok" type="button" data-paid="${i.id}">Mark paid (EFT)</button>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div>`;
     p.querySelectorAll('[data-paid]').forEach(b => b.addEventListener('click', async () => {
       const i = data.invoices.find(x => x.id === b.dataset.paid);
